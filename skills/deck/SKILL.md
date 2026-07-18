@@ -20,8 +20,15 @@ panel per worker, resumable full-duplex messaging, run-many-in-parallel — but
 Claude Code natively; this skill is the seam. Just as you implicitly know how to
 drive native subagents, this skill teaches you to drive the Deck.
 
-**The binary:** `~/Documents/deepseek-deck/bin/deck` (call it via Bash; it is
-cwd-independent and boots its own daemon on first use).
+**The binary:** `$DEEPSEEK_DECK_HOME/bin/deck` — call it via Bash. It is
+cwd-independent and boots its own daemon on first use. Set `DEEPSEEK_DECK_HOME`
+to the repo root before using the Deck:
+
+```bash
+export DEEPSEEK_DECK_HOME=~/deepseek-deck
+# Persist across sessions:
+echo 'export DEEPSEEK_DECK_HOME="$HOME/deepseek-deck"' >> ~/.$(basename $SHELL)rc
+```
 
 ## Division of labor (the whole point)
 
@@ -80,7 +87,7 @@ at creation.
 
 ## Workflow patterns
 
-**Single delegation.** `id=$(~/Documents/deepseek-deck/bin/deck spawn --task "…" --workspace /path)`.
+**Single delegation.** `id=$($DEEPSEEK_DECK_HOME/bin/deck spawn --task "…" --workspace /path)`.
 Do other work. Later: `deck ps` to check; `deck result $id` when `awaiting_input`.
 
 **Parallel fan-out.** Issue several `deck spawn` calls **in one turn** (independent

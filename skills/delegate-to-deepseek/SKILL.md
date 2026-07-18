@@ -11,14 +11,14 @@ description: Default heuristics for delegating batch, repetitive, or mechanical 
 
 # delegate-to-deepseek (local override)
 
-Overrides the upstream `deepseek-as-subagent` skill at
-`~/Documents/deepseek-as-subagent/skills/delegate-to-deepseek/SKILL.md` so all
-DeepSeek dispatches go through the **DeepSeek Deck** (`deck spawn`) for a live,
-resumable, operator-visible panel — at zero frontier-token cost per worker.
+Overrides the upstream `deepseek-as-subagent` skill (from
+[PsChina/deepseek-as-subagent](https://github.com/PsChina/deepseek-as-subagent))
+so all DeepSeek dispatches go through the **DeepSeek Deck** (`deck spawn`) for a
+live, resumable, operator-visible panel — at zero frontier-token cost per worker.
 
 ## Dispatch rule (mandatory)
 
-- **Preferred**: the **DeepSeek Deck** via `~/Documents/deepseek-deck/bin/deck spawn
+- **Preferred**: the **DeepSeek Deck** via `$DEEPSEEK_DECK_HOME/bin/deck spawn
   --task "<...>" [--workspace DIR] [--tools ...]` (see the `deck` skill). It runs
   the worker as a live, resumable panel in the Deck UI and returns only an id;
   collect the outcome with `deck result <id>` (compact). This spends **zero**
@@ -86,7 +86,7 @@ almost always more expensive than not delegating at all.
 
 ## Upstream reference
 
-The full upstream heuristics (in Chinese, with detailed cost math) live at
-`~/Documents/deepseek-as-subagent/skills/delegate-to-deepseek/SKILL.md`.
-That file is not loaded by Claude Code because this local override
+The full upstream heuristics (in Chinese, with detailed cost math) live in the
+[PsChina/deepseek-as-subagent](https://github.com/PsChina/deepseek-as-subagent)
+repo. That file is not loaded by Claude Code because this local override
 supersedes it. Consult upstream when tuning cost-vs-quality tradeoffs.

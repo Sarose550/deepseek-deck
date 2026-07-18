@@ -19,6 +19,38 @@ execution costs zero frontier tokens.**
 | Live panel / resumable / parallel | yes | partial | **yes** |
 | Human can watch & intervene | in-terminal | no | **web UI** |
 
+## Claude Code Plugin
+
+This repo is also a **Claude Code plugin** — install it to give Claude the four
+skills (`deck`, `supervisor-dag`, `dsar`, `delegate-to-deepseek`) that teach it
+to drive the Deck:
+
+```bash
+# Add as a marketplace (one-time):
+claude plugin marketplace add https://github.com/Sarose550/deepseek-deck
+
+# Then install the plugin:
+claude plugin install deepseek-deck@deepseek-deck
+```
+
+Or add it manually in `~/.claude/settings.json`:
+
+```json
+"extraKnownMarketplaces": {
+  "deepseek-deck": {
+    "source": { "source": "github", "repo": "Sarose550/deepseek-deck" }
+  }
+}
+```
+
+After installing, Claude will pick up the four skills automatically. Before
+using any `deck` commands, set `DEEPSEEK_DECK_HOME` to your repo root:
+
+```bash
+export DEEPSEEK_DECK_HOME=~/deepseek-deck
+echo 'export DEEPSEEK_DECK_HOME="$HOME/deepseek-deck"' >> ~/.$(basename $SHELL)rc
+```
+
 ## Layout
 
 ```
@@ -115,7 +147,10 @@ an adversarial CRITIC/RESPONSE code-review loop entirely on Deck workers.
 ## Skills
 
 This repo bundles the four Claude Code skills that drive the Deck, under
-`skills/`. Install them by symlinking (or copying) into `~/.claude/skills/`:
+`skills/`. The **recommended** way to install them is via the Claude Code plugin
+system (see [Claude Code Plugin](#claude-code-plugin) above).
+
+You can also symlink them directly into `~/.claude/skills/`:
 
 ```bash
 for s in deck delegate-to-deepseek dsar supervisor-dag; do
@@ -141,10 +176,12 @@ subagent. See [`NOTICE`](NOTICE) for the original attribution.
 ## Full setup from scratch
 
 ```bash
-git clone <this-repo-url> deepseek-deck
-cd deepseek-deck
+git clone https://github.com/Sarose550/deepseek-deck.git ~/deepseek-deck
+cd ~/deepseek-deck
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+export DEEPSEEK_DECK_HOME="$(pwd)"
+echo 'export DEEPSEEK_DECK_HOME="'"$(pwd)"'"' >> ~/.$(basename $SHELL)rc
 
 mkdir -p ~/.deepseek-mcp
 cat > ~/.deepseek-mcp/config.json <<'EOF'
@@ -159,7 +196,11 @@ git clone https://github.com/PsChina/deepseek-as-subagent ../deepseek-as-subagen
 bin/deck up
 bin/deck open --launch
 
-# install the skills (see "Skills" above)
+# Install the skills as a Claude Code plugin (recommended):
+claude plugin marketplace add "$(pwd)"
+claude plugin install deepseek-deck@deepseek-deck
+
+# Or symlink them directly (legacy):
 for s in deck delegate-to-deepseek dsar supervisor-dag; do
   ln -s "$(pwd)/skills/$s" ~/.claude/skills/$s
 done

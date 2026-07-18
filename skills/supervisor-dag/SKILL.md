@@ -66,7 +66,7 @@ The supervisor MUST route dispatch according to that value:
 
 | `Model:` | Dispatch mechanism | Notes |
 |---|---|---|
-| `deepseek` | `~/Documents/deepseek-deck/bin/deck spawn --folder <run folder id> --task "<...>" [--name <node id>] [--tools ...]` via Bash (create the run's folder first, see above). Capture the printed id. Fan out a whole ready-set by issuing several `deck spawn` calls in one turn, or `deck wave --file <spec>`. Collect with `deck result <id>` (compact). See the `deck` skill. | The supervisor MUST NOT do the delegable work itself. Do NOT use native `Task` subagents for worker nodes — DeepSeek workers are the only workers. |
+| `deepseek` | `$DEEPSEEK_DECK_HOME/bin/deck spawn --folder <run folder id> --task "<...>" [--name <node id>] [--tools ...]` via Bash (create the run's folder first, see above). Capture the printed id. Fan out a whole ready-set by issuing several `deck spawn` calls in one turn, or `deck wave --file <spec>`. Collect with `deck result <id>` (compact). See the `deck` skill. | The supervisor MUST NOT do the delegable work itself. Do NOT use native `Task` subagents for worker nodes — DeepSeek workers are the only workers. |
 | `supervisor` | Supervisor executes inline | Coordination + reasoning-heavy judgment (board, merges, tagging, review). The frontier model is the only non-DeepSeek component, so nodes needing frontier judgment are done here inline, not delegated. MUST NOT touch files owned by an in-flight `deepseek` node's workspace. |
 
 There is no default. A node without `Model:` is malformed and MUST NOT be dispatched.
