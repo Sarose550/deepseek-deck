@@ -22,7 +22,13 @@ drive native subagents, this skill teaches you to drive the Deck.
 
 **The binary:** `$DEEPSEEK_DECK_HOME/bin/deck` — call it via Bash. It is
 cwd-independent and boots its own daemon on first use. Set `DEEPSEEK_DECK_HOME`
-to the repo root before using the Deck (e.g. `export DEEPSEEK_DECK_HOME=~/deepseek-deck`).
+to the repo root before using the Deck:
+
+```bash
+export DEEPSEEK_DECK_HOME=~/deepseek-deck
+# Persist across sessions:
+echo 'export DEEPSEEK_DECK_HOME="$HOME/deepseek-deck"' >> ~/.$(basename $SHELL)rc
+```
 
 ## Division of labor (the whole point)
 

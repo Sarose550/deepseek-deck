@@ -47,7 +47,8 @@ After installing, Claude will pick up the four skills automatically. Before
 using any `deck` commands, set `DEEPSEEK_DECK_HOME` to your repo root:
 
 ```bash
-export DEEPSEEK_DECK_HOME=~/deepseek-deck   # or wherever you cloned
+export DEEPSEEK_DECK_HOME=~/deepseek-deck
+echo 'export DEEPSEEK_DECK_HOME="$HOME/deepseek-deck"' >> ~/.$(basename $SHELL)rc
 ```
 
 ## Layout
@@ -180,6 +181,7 @@ cd ~/deepseek-deck
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 export DEEPSEEK_DECK_HOME="$(pwd)"
+echo 'export DEEPSEEK_DECK_HOME="'"$(pwd)"'"' >> ~/.$(basename $SHELL)rc
 
 mkdir -p ~/.deepseek-mcp
 cat > ~/.deepseek-mcp/config.json <<'EOF'
