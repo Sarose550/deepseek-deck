@@ -107,6 +107,20 @@ failed do you `deck log <id>` to see what happened.
 - **Write self-contained tasks.** DeepSeek workers don't share your context.
   Put file paths, conventions, and exact success criteria in the `--task`.
 - **Tell the operator the URL** (`deck open`) so they can watch and intervene.
+- **Never let a worker mutate git state outside its own edits.** A worker told
+  "this file is read-only, propose a patch instead" is not thereby blocked from
+  running `git apply` (bare), `git checkout --`, `git stash`, `git reset`, or
+  `git restore` — those commands are not scoped to the worker's `Allowed files`
+  and can silently revert or discard *unrelated* uncommitted work elsewhere in
+  the tree. This happened in practice: a worker self-testing a patch ran
+  `git apply` then `git checkout -- <two files>` to "clean up", reverting ~260
+  lines of unrelated uncommitted work that a human had not yet committed.
+  Any task whose brief includes "don't edit X, write a patch instead" MUST
+  explicitly forbid these commands and permit only `git apply --check` /
+  `git diff` / `diff -u` for self-verification. State this in the `--task`
+  itself — prose telling the worker "don't touch X" is not enough; a worker
+  will readily apply-then-revert if `Allowed files` doesn't also spell out
+  which git subcommands are off-limits.
 
 ## Relationship to native subagents
 

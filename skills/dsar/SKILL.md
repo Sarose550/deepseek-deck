@@ -223,6 +223,12 @@ the target paths listed in <inputs>.
 <verification>
 - If a quick offline test is possible, run it. No network, no destructive
   commands, no build/test that mutates paths outside the target list.
+- Self-verification uses `git apply --check` / `git diff` / `diff -u` only.
+  NEVER run `git apply` (bare), `git checkout`, `git stash`, or `git reset` —
+  these are not scoped to the target list and can silently revert or discard
+  unrelated uncommitted work elsewhere in the tree. (This has happened: a
+  worker self-testing a patch ran `git apply` then `git checkout --` to
+  "clean up" and reverted ~260 lines of unrelated uncommitted source.)
 - If a fix breaks a detectable syntax check or removes needed content,
   UNDO it and downgrade the row to `reject with reasoning`.
 - If verification would require network access, state the claim as a
@@ -232,6 +238,8 @@ the target paths listed in <inputs>.
 <scope_guard>
 - Never edit files outside the target list.
 - Never commit, push, or run destructive commands.
+- Never run `git apply` (bare), `git checkout`, `git stash`, or `git reset` —
+  self-verify with `git apply --check` / `git diff` / `diff -u` only.
 - Never invent findings the critic didn't raise; do not rephrase existing
   findings (they carry through verbatim to the next CRITIC round).
 </scope_guard>

@@ -101,6 +101,13 @@ Each dispatch payload (Task prompt, or DeepSeek `task` + `context` strings) MUST
 5. Links to binding law (`DESIGN.md`, `DECISIONS.md`, plan doc) — not the whole chat
 6. Offline-only unless the node is an explicit land; no destructive/irreversible actions
 7. Stop and report if a change would alter a frozen `DECISIONS.md` choice
+8. **Forbidden commands**, whenever the node's `Allowed files` excludes source it
+   is analyzing or patching against: the node MUST NOT run `git apply` (bare —
+   only `git apply --check`), `git checkout --`, `git stash`, `git reset`, or
+   `git restore` on *anything*. These commands are not scoped to a path — a
+   worker "just testing" a patch against excluded source can silently revert
+   unrelated uncommitted work on the same files. State this explicitly in the
+   task string; do not rely on the `Allowed files` list alone to imply it.
 
 For `Model: deepseek` nodes specifically:
 
@@ -200,6 +207,13 @@ while not done:
     supervisor   -> supervisor executes inline (coordination + frontier judgment)
 
   on each completion:
+    # for any node whose Allowed files EXCLUDE source it read/analyzed
+    # (e.g. "propose a patch, don't edit src/"), verify the exclusion held:
+    if node.allowed_files excludes analyzed source paths:
+      git status --short -- <those paths>   # must be empty
+      git diff --stat -- <those paths>      # must be empty
+      # non-empty => the node mutated protected source; recover before
+      # trusting anything the node produced (see deck skill's git-command note)
     verify exit criteria -> strike [x] -> update board
 
   # per-wave enforcement release (mandatory before next wave)
