@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "deepseek-deck",
+  "version": "1.0.0",
+  "description": "External, parallel, resumable DeepSeek subagent runtime for Claude Code — spawn DeepSeek workers with live panels in a web UI at zero frontier-token cost. Includes four skills: deck (CLI driver), supervisor-dag (DAG harness), dsar (adversarial code review), and delegate-to-deepseek (auto-delegation heuristics).",
+  "author": {
+    "name": "Sam Rosenstrauch",
+    "email": "sarose550@gmail.com"
+  },
+  "homepage": "https://github.com/Sarose550/deepseek-deck",
+  "repository": "https://github.com/Sarose550/deepseek-deck",
+  "license": "MIT",
+  "category": "development",
+  "keywords": ["deepseek", "subagent", "parallel", "dag", "code-review", "delegation"],
+  "skills": [
+    "./skills/deck",
+    "./skills/supervisor-dag",
+    "./skills/dsar",
+    "./skills/delegate-to-deepseek"
+  ]
+}

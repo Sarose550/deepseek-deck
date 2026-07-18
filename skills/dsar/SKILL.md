@@ -6,13 +6,13 @@ user_invocable: true
 
 # Adversarial Code Review (DeepSeek-only)
 
-> **Actors.** Every code-touching action goes through DeepSeek on the **DeepSeek Deck** (`~/Documents/deepseek-deck/bin/deck`, see the `deck` skill) — CRITIC and RESPONSE run as Deck workers with live panels the operator can watch. Claude orchestrates: composes prompts, writes and revokes the deny lock, reads the review/response artifacts, and issues the final ship/no-ship verdict on top of DeepSeek's per-round `VERDICT: APPROVED|REVISE`. **Claude MUST NOT `Read` or `Edit` any file in `TARGET_PATHS` between the deny lock's write (Step 4.2) and its release (Step 8).**
+> **Actors.** Every code-touching action goes through DeepSeek on the **DeepSeek Deck** (`$DEEPSEEK_DECK_HOME/bin/deck`, see the `deck` skill) — CRITIC and RESPONSE run as Deck workers with live panels the operator can watch. Claude orchestrates: composes prompts, writes and revokes the deny lock, reads the review/response artifacts, and issues the final ship/no-ship verdict on top of DeepSeek's per-round `VERDICT: APPROVED|REVISE`. **Claude MUST NOT `Read` or `Edit` any file in `TARGET_PATHS` between the deny lock's write (Step 4.2) and its release (Step 8).**
 
 > **Deck dispatch overrides (read first — they supersede the legacy mechanics below).**
 > 1. **Scratch location.** Deck workers are sandboxed to their `--workspace`, so they cannot write `/tmp`. Wherever this skill says `/tmp/dsar-<...>-${REVIEW_ID}.md`, use `${REPO_ROOT}/.dsar/<...>-${REVIEW_ID}.md` instead. Create `${REPO_ROOT}/.dsar/` at Step 2 and add it to `.gitignore` if not already ignored. These artifacts are NOT in `TARGET_PATHS`, so Claude may freely `Read` them (only the source under review is deny-locked).
 > 2. **Dispatch.** Every CRITIC / RESPONSE dispatch runs as a Deck worker:
 >    ```bash
->    id=$(~/Documents/deepseek-deck/bin/deck spawn \
+>    id=$($DEEPSEEK_DECK_HOME/bin/deck spawn \
 >          --name dsar-critic-${REVIEW_ID} --workspace "${REPO_ROOT}" \
 >          --task-file /tmp/dsar-critic-body-${REVIEW_ID}.md \
 >          --tools "Read,Glob,Grep,Bash,Write")           # RESPONSE adds Edit
@@ -161,13 +161,13 @@ CONTEXT:
 Then spawn a Deck worker (auditor tools, no `Edit`):
 
 ```bash
-id=$(~/Documents/deepseek-deck/bin/deck spawn \
+id=$($DEEPSEEK_DECK_HOME/bin/deck spawn \
       --name dsar-critic-${REVIEW_ID} --workspace "${REPO_ROOT}" \
       --task-file /tmp/dsar-critic-body-${REVIEW_ID}.md \
       --tools "Read,Glob,Grep,Bash,Write")
 ```
 
-Poll `~/Documents/deepseek-deck/bin/deck ps` until `id` is `awaiting_input` (or `deck result ${id}` shows done), then proceed to Step 4.4. Do not read `TARGET_PATHS`; only `.dsar/review-${REVIEW_ID}.md`.
+Poll `$DEEPSEEK_DECK_HOME/bin/deck ps` until `id` is `awaiting_input` (or `deck result ${id}` shows done), then proceed to Step 4.4. Do not read `TARGET_PATHS`; only `.dsar/review-${REVIEW_ID}.md`.
 
 > **Scope note.** The active lock binds *Claude*, not the DeepSeek sub-session. The sub-session runs outside Claude Code's permission harness through MCP and MUST be allowed to read the target — otherwise the review is meaningless. What the sub-session cannot mutate is guarded by the `<reviewer_permissions>` prompt block, which is wording, not a hard block. Documenting rather than pretending otherwise.
 
@@ -308,7 +308,7 @@ CONTEXT:
 Then spawn a Deck worker with the full editing toolset:
 
 ```bash
-id=$(~/Documents/deepseek-deck/bin/deck spawn \
+id=$($DEEPSEEK_DECK_HOME/bin/deck spawn \
       --name dsar-response-${REVIEW_ID} --workspace "${REPO_ROOT}" \
       --task-file /tmp/dsar-response-body-${REVIEW_ID}.md \
       --tools "Read,Write,Edit,Bash,Glob,Grep")
@@ -515,7 +515,7 @@ On startup, the skill MUST check for a leftover `.dsar-active-lock.json` and pro
 - Cleanup conditional on terminal state.
 - Operator language detected at Step 1. Machine-readable literals stay English.
 - Deny lock enumerates every target path — no broad-glob shortcuts even when the list is long.
-- If the Deck won't start → tell the operator `DeepSeek Deck not available — check ~/Documents/deepseek-deck/bin/deck up and ~/.deepseek-mcp/config.json.` Do NOT fall back to Claude-direct or to Codex.
+- If the Deck won't start → tell the operator `DeepSeek Deck not available — check $DEEPSEEK_DECK_HOME/bin/deck up and ~/.deepseek-mcp/config.json.` Do NOT fall back to Claude-direct or to Codex.
 - CRITIC uses auditor tools (`Read,Glob,Grep,Bash,Write` — no `Edit`); RESPONSE gets the full editing set. One fresh worker per role per round.
 
 ## Anti-patterns
