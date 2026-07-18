@@ -1,0 +1,4 @@
+#!/bin/bash
+DECK_ROOT="/Users/samrosenstrauch/Documents/deepseek-deck"
+export PYTHONPATH="$DECK_ROOT"
+exec "$DECK_ROOT/.venv/bin/python" -m deck.desktop

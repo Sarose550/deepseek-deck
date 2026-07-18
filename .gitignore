@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Editors/OS
+.DS_Store
+
+# App runtime state (not source)
+*.log
+
+# Secrets — never commit API keys
+.deepseek-mcp/
+config.json

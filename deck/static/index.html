@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeepSeek Deck</title>
+<style>
+  :root{
+    --bg:#1a1a19; --panel:#212120; --panel2:#262625; --border:#34332f;
+    --text:#e5e2da; --muted:#8a877d; --faint:#5c5a52;
+    --accent:#d97757; --accent-dim:#b45c3e;
+    --user:#7aa2f7; --tool:#c99bec; --toolres:#6f9c76; --err:#e06c6c;
+    --run:#e2b341; --done:#6f9c76;
+    --mono:"SF Mono",ui-monospace,"Cascadia Code",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:var(--mono);font-size:13px;line-height:1.5;overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100vh}
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;
+    background:var(--panel);border-bottom:1px solid var(--border);flex:0 0 auto}
+  header .logo{font-weight:700;letter-spacing:.5px}
+  header .logo b{color:var(--accent)}
+  header .meta{color:var(--muted);font-size:12px}
+  header .spacer{flex:1}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+    background:var(--faint);margin-right:5px;vertical-align:middle}
+  .dot.on{background:var(--done)} .dot.off{background:var(--err)}
+  button{font-family:var(--mono);font-size:12px;background:var(--panel2);
+    color:var(--text);border:1px solid var(--border);border-radius:6px;
+    padding:6px 12px;cursor:pointer}
+  button:hover{border-color:var(--accent-dim)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#231a14;font-weight:600}
+  button.primary:hover{background:var(--accent-dim)}
+  button.ghost{background:transparent}
+  button.mini{padding:2px 7px;font-size:12px}
+  #body{display:flex;flex:1;min-height:0}
+  aside{width:270px;flex:0 0 auto;background:var(--panel);
+    border-right:1px solid var(--border);overflow-y:auto;padding:8px;display:flex;flex-direction:column}
+  aside .grp{color:var(--faint);font-size:11px;text-transform:uppercase;
+    letter-spacing:1px;margin:12px 6px 4px;display:flex;align-items:center}
+  aside .grp .spacer{flex:1}
+  .frow{display:flex;align-items:center;gap:6px;padding:7px 6px;border-radius:6px;cursor:pointer}
+  .frow:hover{background:var(--panel2)}
+  .frow.sel{background:var(--panel2);outline:1px solid var(--border)}
+  .frow .caret{width:12px;color:var(--faint);flex:0 0 auto;transition:transform .1s}
+  .frow .caret.open{transform:rotate(90deg)}
+  .frow .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .frow .cnt{color:var(--faint);font-size:11px}
+  .frow .acts{display:none;gap:3px}
+  .frow:hover .acts{display:flex}
+  .fname-edit{flex:1;background:var(--bg);color:var(--text);border:1px solid var(--accent);
+    border-radius:4px;padding:2px 5px;font-family:var(--mono);font-size:13px}
+  .arow{display:flex;align-items:center;gap:8px;padding:5px 6px 5px 24px;border-radius:6px;
+    cursor:pointer;margin-left:6px}
+  .arow:hover{background:var(--panel2)}
+  .arow.sel{background:var(--panel2);outline:1px solid var(--border)}
+  .arow .an{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .s-starting{background:var(--muted);animation:pulse 1.2s infinite}
+  .s-running{background:var(--run);animation:pulse 1.1s infinite}
+  .s-awaiting_input{background:var(--done)}
+  .s-error{background:var(--err)} .s-stopped{background:var(--faint)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  main{flex:1;min-width:0;overflow:auto;padding:14px;background:var(--bg)}
+  .fbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .fbar .ftitle{font-size:15px;font-weight:700}
+  .fbar .fpath{color:var(--muted);font-size:11px}
+  .fbar .spacer{flex:1}
+  .fbar .iso{font-size:11px;color:var(--faint);border:1px solid var(--border);border-radius:20px;padding:2px 8px}
+  #grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(430px,1fr))}
+  #grid.focus{grid-template-columns:1fr}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+    display:flex;flex-direction:column;min-height:280px;max-height:78vh;overflow:hidden}
+  #grid.focus .panel{max-height:none;min-height:74vh}
+  .phead{display:flex;align-items:center;gap:8px;padding:9px 12px;
+    background:var(--panel2);border-bottom:1px solid var(--border);flex:0 0 auto}
+  .phead .nm{font-weight:600;cursor:pointer}
+  .phead .id{color:var(--faint);font-size:11px}
+  .phead .spacer{flex:1}
+  .badge{font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--border)}
+  .badge.running{color:var(--run);border-color:var(--run)}
+  .badge.awaiting_input{color:var(--done);border-color:var(--done)}
+  .badge.error{color:var(--err);border-color:var(--err)}
+  .badge.stopped{color:var(--muted)} .badge.starting{color:var(--muted)}
+  .pbody{flex:1;overflow-y:auto;padding:12px 14px}
+  .blk{margin:0 0 12px}
+  .blk .who{font-size:11px;color:var(--faint);margin-bottom:3px}
+  .b-user .who{color:var(--user)} .b-text .who{color:var(--accent)}
+  .b-user .body{white-space:pre-wrap;color:#cfd6e6;border-left:2px solid var(--user);padding-left:9px}
+  .b-text .body{white-space:pre-wrap}
+  .reason{border-left:2px solid var(--faint);padding-left:9px;color:var(--muted);
+    white-space:pre-wrap;font-style:italic}
+  .reason-h{color:var(--faint);cursor:pointer;font-size:11px;user-select:none}
+  .toolcall{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin:6px 0}
+  .toolcall .t{color:var(--tool);font-weight:600}
+  .toolcall .args{color:var(--muted);white-space:pre-wrap;word-break:break-word;font-size:12px;margin-top:3px;max-height:120px;overflow:auto}
+  .toolres{border-left:2px solid var(--toolres);padding:4px 0 4px 9px;margin:4px 0 6px;
+    color:#a9c4ab;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:160px;overflow:auto}
+  .toolres.err{border-color:var(--err);color:#e0a0a0}
+  .divider{color:var(--faint);font-size:11px;text-align:center;margin:10px 0;opacity:.6}
+  .pcomp{flex:0 0 auto;display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);background:var(--panel2)}
+  .pcomp textarea{flex:1;resize:none;height:38px;background:var(--bg);color:var(--text);
+    border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:12px}
+  .empty{color:var(--faint);text-align:center;margin-top:16vh;line-height:1.8}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:20}
+  .overlay.on{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;width:600px;max-width:92vw;padding:20px}
+  .modal h2{margin:0 0 14px;font-size:15px}
+  .modal label{display:block;color:var(--muted);font-size:11px;margin:10px 0 3px;text-transform:uppercase;letter-spacing:.5px}
+  .modal input,.modal textarea,.modal select{width:100%;background:var(--bg);color:var(--text);
+    border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:12px}
+  .modal textarea{height:110px;resize:vertical}
+  .modal .row{display:flex;gap:10px}.modal .row>div{flex:1}
+  .modal .pathrow{display:flex;gap:8px}.modal .pathrow input{flex:1}
+  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+  .hint{color:var(--faint);font-size:11px;line-height:1.5;margin:4px 2px 0}
+  .modal details{margin-top:14px;border-top:1px solid var(--border);padding-top:8px}
+  .modal summary{cursor:pointer;color:var(--muted);font-size:12px;user-select:none;padding:2px 0}
+  .modal summary:hover{color:var(--text)}
+  .modal details[open] summary{margin-bottom:6px}
+  .ctx{position:fixed;background:var(--panel2);border:1px solid var(--border);border-radius:8px;
+    padding:5px;z-index:30;display:none;min-width:150px}
+  .ctx.on{display:block}
+  .ctx div{padding:7px 12px;border-radius:5px;cursor:pointer;font-size:12px}
+  .ctx div:hover{background:var(--panel)}
+  .ctx div.danger{color:var(--err)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">DeepSeek <b>Deck</b></div>
+    <div class="meta" id="hmeta">—</div>
+    <div class="spacer"></div>
+    <div class="meta"><span class="dot" id="conn"></span><span id="connt">connecting…</span></div>
+    <button class="ghost" id="newFolderBtn">+ Folder</button>
+    <button class="primary" id="newAgentBtn">+ Agent</button>
+  </header>
+  <div id="body">
+    <aside id="side"></aside>
+    <main id="main"></main>
+  </div>
+</div>
+
+<!-- New Folder modal -->
+<div class="overlay" id="folderOverlay">
+  <div class="modal">
+    <h2>New folder</h2>
+    <label>Name</label>
+    <input id="nf_name" placeholder="My Project">
+    <label>Project directory (agents in this folder are mounted here)</label>
+    <div class="pathrow">
+      <input id="nf_ws" placeholder="/absolute/path — leave blank for scratch">
+      <button class="ghost" id="nf_pick" style="display:none">Choose…</button>
+    </div>
+    <label>Isolation</label>
+    <select id="nf_iso">
+      <option value="shared">Shared — all agents work in the same directory (recommended)</option>
+      <option value="worktree">Worktree — each agent gets its own git worktree (git repos only)</option>
+    </select>
+    <div class="hint">"Worktree" gives each agent its own private copy of the project (a separate git branch) so parallel agents can't step on each other's file edits. Only works if the project directory is a git repository; otherwise agents just share the one directory.</div>
+    <div class="actions">
+      <button class="ghost" id="nf_cancel">Cancel</button>
+      <button class="primary" id="nf_create">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Agent modal -->
+<div class="overlay" id="agentOverlay">
+  <div class="modal">
+    <h2>New agent</h2>
+    <label>Task</label>
+    <textarea id="na_task" placeholder="What should this worker do? It runs autonomously in the folder's directory."></textarea>
+    <div class="row">
+      <div><label>Name</label><input id="na_name" placeholder="worker-1"></div>
+      <div><label>Folder</label><select id="na_folder"></select></div>
+    </div>
+    <details id="na_advanced">
+      <summary>Advanced options</summary>
+      <label>Model</label>
+      <select id="na_model">
+        <option value="deepseek-v4-pro" selected>deepseek-v4-pro (high-quality reasoning)</option>
+        <option value="deepseek-v4-flash">deepseek-v4-flash (low-latency)</option>
+      </select>
+      <div class="row">
+        <div>
+          <label>Max turns</label>
+          <input id="na_turns" type="number" placeholder="(default)">
+          <div class="hint">A safety limit on how many back-and-forth steps the agent may take before stopping itself, so a confused agent can't loop forever. The default is plenty.</div>
+        </div>
+        <div>
+          <label>Tools (comma)</label>
+          <input id="na_tools" placeholder="Read,Write,Edit,Bash,Glob,Grep">
+          <div class="hint">Which capabilities the agent may use (reading files, writing, editing, shell, search). Default is all of them.</div>
+        </div>
+      </div>
+    </details>
+    <div class="actions">
+      <button class="ghost" id="na_cancel">Cancel</button>
+      <button class="primary" id="na_spawn">Spawn</button>
+    </div>
+  </div>
+</div>
+
+<div class="ctx" id="ctx"></div>
+
+<script>
+const folders = new Map();   // id -> folder meta
+const agents = new Map();    // id -> {meta, blocks, cur, hydrated}
+const expanded = new Set();  // folder ids expanded in sidebar
+let openFolder = null;       // folder id whose panels are shown
+let focusAgent = null;       // agent id shown solo (within openFolder)
+
+const $ = s => document.querySelector(s);
+const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e;};
+const hasNative = () => !!(window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder);
+
+// ---------- websocket ----------
+let ws;
+function connect(){
+  ws=new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen=()=>{ $("#conn").className="dot on"; $("#connt").textContent="live"; };
+  ws.onclose=()=>{ $("#conn").className="dot off"; $("#connt").textContent="reconnecting…"; setTimeout(connect,1500); };
+  ws.onmessage=e=>handle(JSON.parse(e.data));
+}
+
+function agentsIn(fid){ return [...agents.values()].filter(a=>a.meta.folder_id===fid); }
+function ensureAgent(id,meta){
+  if(!agents.has(id)) agents.set(id,{meta:meta||{id,name:id,status:"starting",folder_id:"unfiled",turns_used:0,tokens:{total:0}},blocks:[],cur:{},hydrated:false});
+  else if(meta) Object.assign(agents.get(id).meta,meta);
+  return agents.get(id);
+}
+
+async function handle(ev){
+  if(ev.type==="hello"){
+    $("#hmeta").textContent="model "+ev.model;
+    (ev.folders||[]).forEach(f=>folders.set(f.id,f));
+    (ev.agents||[]).forEach(m=>ensureAgent(m.id,m));
+    renderSide();
+    if(!openFolder){ const first=[...folders.values()].find(f=>!f.archived && agentsIn(f.id).length); if(first) selectFolder(first.id); else renderMain(); }
+    for(const m of (ev.agents||[])) await hydrate(m.id);
+    return;
+  }
+  if(ev.type==="folder_created"||ev.type==="folder_updated"){ folders.set(ev.id,ev); renderSide(); if(ev.id===openFolder) renderFbar(); return; }
+  if(ev.type==="folder_deleted"){ folders.delete(ev.id); [...agents.values()].filter(a=>a.meta.folder_id===ev.id).forEach(a=>agents.delete(a.meta.id)); if(openFolder===ev.id){openFolder=null;focusAgent=null;} renderSide(); renderMain(); return; }
+  if(ev.type==="agent_removed"){ agents.delete(ev.session_id); if(focusAgent===ev.session_id) focusAgent=null; renderSide(); if(agentVisibleFolder(ev.session_id)) renderMain(); return; }
+  const id=ev.session_id; if(!id) return;
+  const a=ensureAgent(id);
+  switch(ev.type){
+    case "session_created":
+      a.meta.name=ev.name; a.meta.task=ev.task; a.meta.workspace=ev.workspace; a.meta.model=ev.model;
+      if(ev.folder_id) a.meta.folder_id=ev.folder_id;
+      a.hydrated=true; pushBlock(a,{kind:"user",text:ev.task});
+      renderSide();
+      if(!openFolder && a.meta.folder_id) selectFolder(a.meta.folder_id);
+      else if(a.meta.folder_id===openFolder) renderMain();
+      break;
+    case "status": a.meta.status=ev.status; renderSide(); updateBadge(id); updateComposer(id); break;
+    case "turn_start": a.cur={}; break;
+    case "reasoning_delta": appendReason(a,ev.text); break;
+    case "content_delta": appendText(a,ev.text); break;
+    case "tool_call": a.cur={}; pushBlock(a,{kind:"toolcall",name:ev.name,args:ev.args,id:ev.tool_call_id}); break;
+    case "tool_result": pushBlock(a,{kind:"toolres",ok:ev.ok,result:ev.result,id:ev.tool_call_id}); break;
+    case "user_message": a.cur={}; pushBlock(a,{kind:"user",text:ev.text}); break;
+    case "response_done":
+      a.meta.turns_used=ev.turns_used; a.meta.tokens=ev.tokens; a.cur={};
+      pushBlock(a,{kind:"divider",text:`done · ${ev.turns_used} turns · ${ev.tokens.total} tokens`});
+      renderSide(); break;
+    case "error": pushBlock(a,{kind:"toolres",ok:false,result:"ERROR: "+ev.message}); break;
+  }
+}
+
+// ---------- block model ----------
+function agentVisibleFolder(id){ const a=agents.get(id); return a && a.meta.folder_id===openFolder; }
+function isVisible(id){ return agentVisibleFolder(id) && (!focusAgent || focusAgent===id); }
+function pushBlock(a,b){ a.blocks.push(b); if(isVisible(a.meta.id)) appendBlockDom(a.meta.id,b); }
+function appendReason(a,t){ if(!a.cur.reason){a.cur.reason={kind:"reason",text:""};a.blocks.push(a.cur.reason);if(isVisible(a.meta.id))appendBlockDom(a.meta.id,a.cur.reason);} a.cur.reason.text+=t; liveUpdate(a.meta.id,a.cur.reason); }
+function appendText(a,t){ if(!a.cur.text){a.cur.text={kind:"text",text:""};a.blocks.push(a.cur.text);if(isVisible(a.meta.id))appendBlockDom(a.meta.id,a.cur.text);} a.cur.text.text+=t; liveUpdate(a.meta.id,a.cur.text); }
+
+async function hydrate(id){
+  const a=agents.get(id); if(!a||a.hydrated) return;
+  try{
+    const r=await fetch(`/api/agents/${id}/transcript`).then(r=>r.json());
+    a.blocks=[]; a.cur={};
+    for(const m of r.messages||[]){
+      if(m.role==="system") continue;
+      if(m.role==="user") a.blocks.push({kind:"user",text:m.content||""});
+      else if(m.role==="assistant"){
+        if(m.reasoning_content) a.blocks.push({kind:"reason",text:m.reasoning_content});
+        if(m.content) a.blocks.push({kind:"text",text:m.content});
+        for(const tc of m.tool_calls||[]) a.blocks.push({kind:"toolcall",name:tc.function.name,args:safeArgs(tc.function.arguments),id:tc.id});
+      } else if(m.role==="tool") a.blocks.push({kind:"toolres",ok:!(m.content||"").startsWith("ERROR:"),result:m.content,id:m.tool_call_id});
+    }
+    a.hydrated=true; if(isVisible(id)) renderPanelBody(id);
+  }catch(e){}
+}
+function safeArgs(s){ try{return JSON.parse(s);}catch(e){return {_raw:(s||"").slice(0,200)};} }
+
+// ---------- sidebar ----------
+function renderSide(){
+  const side=$("#side"); side.innerHTML="";
+  const active=[...folders.values()].filter(f=>!f.archived);
+  const arch=[...folders.values()].filter(f=>f.archived);
+  const g=el("div","grp"); g.appendChild(el("span",null,"folders"));
+  side.appendChild(g);
+  active.forEach(f=>side.appendChild(folderRow(f)));
+  if(arch.length){
+    const ga=el("div","grp"); ga.appendChild(el("span",null,"archived")); side.appendChild(ga);
+    arch.forEach(f=>side.appendChild(folderRow(f)));
+  }
+}
+function folderRow(f){
+  const wrap=el("div");
+  const row=el("div","frow"+(f.id===openFolder?" sel":""));
+  const ags=agentsIn(f.id); const running=ags.filter(a=>a.meta.status==="running"||a.meta.status==="starting").length;
+  const caret=el("span","caret"+(expanded.has(f.id)?" open":""),"▸");
+  caret.onclick=e=>{e.stopPropagation(); expanded.has(f.id)?expanded.delete(f.id):expanded.add(f.id); renderSide();};
+  row.appendChild(caret);
+  const nm=el("span","fname",f.name); row.appendChild(nm);
+  row.appendChild(el("span","cnt",running>0?`●${running}/${ags.length}`:`${ags.length}`));
+  const acts=el("span","acts");
+  const addB=el("button","mini ghost","+"); addB.title="new agent here"; addB.onclick=e=>{e.stopPropagation(); openAgentModal(f.id);};
+  const moreB=el("button","mini ghost","⋯"); moreB.onclick=e=>{e.stopPropagation(); folderMenu(e,f);};
+  acts.appendChild(addB); if(f.id!=="unfiled") acts.appendChild(moreB);
+  row.appendChild(acts);
+  row.onclick=()=>selectFolder(f.id);
+  nm.ondblclick=e=>{e.stopPropagation(); inlineRename(row,nm,f);};
+  wrap.appendChild(row);
+  if(expanded.has(f.id)) ags.forEach(a=>{
+    const ar=el("div","arow"+(a.meta.id===focusAgent?" sel":""));
+    ar.appendChild(el("span","sdot s-"+a.meta.status));
+    ar.appendChild(el("span","an",a.meta.name||a.meta.id));
+    ar.onclick=()=>{ selectFolder(f.id); focusAgent=a.meta.id; renderSide(); renderMain(); };
+    wrap.appendChild(ar);
+  });
+  return wrap;
+}
+function inlineRename(row,nm,f){
+  const inp=el("input","fname-edit"); inp.value=f.name;
+  row.replaceChild(inp,nm); inp.focus(); inp.select();
+  const commit=async()=>{ const v=inp.value.trim(); if(v&&v!==f.name) await api("PATCH",`/api/folders/${f.id}`,{name:v}); renderSide(); };
+  inp.onkeydown=e=>{ if(e.key==="Enter") commit(); if(e.key==="Escape") renderSide(); };
+  inp.onblur=commit;
+}
+function folderMenu(e,f){
+  const ctx=$("#ctx"); ctx.innerHTML="";
+  const mk=(t,fn,danger)=>{const d=el("div",danger?"danger":null,t); d.onclick=()=>{ctx.classList.remove("on");fn();}; ctx.appendChild(d);};
+  mk("Rename",()=>{ const row=[...document.querySelectorAll(".frow")].find(r=>r.querySelector(".fname")&&r.querySelector(".fname").textContent===f.name); if(row) inlineRename(row,row.querySelector(".fname"),f); });
+  mk(f.archived?"Unarchive":"Archive",()=>api("PATCH",`/api/folders/${f.id}`,{archived:!f.archived}));
+  mk("Delete folder + agents",async()=>{ if(confirm(`Delete "${f.name}" and its agents? This removes their transcripts.`)) await api("DELETE",`/api/folders/${f.id}`); },true);
+  ctx.style.left=e.clientX+"px"; ctx.style.top=e.clientY+"px"; ctx.classList.add("on");
+}
+document.addEventListener("click",()=>$("#ctx").classList.remove("on"));
+
+function selectFolder(fid){ openFolder=fid; focusAgent=null; expanded.add(fid); renderSide(); renderMain(); for(const a of agentsIn(fid)) hydrate(a.meta.id); }
+
+// ---------- main ----------
+function renderMain(){
+  const main=$("#main"); main.innerHTML="";
+  if(!openFolder || !folders.has(openFolder)){
+    main.appendChild(el("div","empty","Select a folder on the left, or click “+ Folder” to make one.\nDeepSeek workers you spawn appear here as live panels."));
+    return;
+  }
+  const f=folders.get(openFolder);
+  const bar=el("div","fbar"); bar.id="fbar";
+  renderFbarInto(bar,f);
+  main.appendChild(bar);
+  const grid=el("div"); grid.id="grid"; grid.className=focusAgent?"focus":"";
+  main.appendChild(grid);
+  const ids = focusAgent ? [focusAgent] : agentsIn(openFolder).map(a=>a.meta.id);
+  if(!ids.length){ grid.appendChild(el("div","empty","No agents in this folder yet.\nClick “+ Agent” to spawn one here.")); return; }
+  ids.forEach(id=>grid.appendChild(buildPanel(id)));
+  ids.forEach(id=>renderPanelBody(id));
+}
+function renderFbar(){ const bar=$("#fbar"); if(bar&&folders.has(openFolder)){ bar.innerHTML=""; renderFbarInto(bar,folders.get(openFolder)); } }
+function renderFbarInto(bar,f){
+  if(focusAgent){ const back=el("button","ghost mini","← "+f.name); back.onclick=()=>{focusAgent=null;renderSide();renderMain();}; bar.appendChild(back); }
+  else bar.appendChild(el("span","ftitle",f.name));
+  bar.appendChild(el("span","fpath",f.workspace||"(scratch workspaces)"));
+  bar.appendChild(el("div","spacer"));
+  const isoTag=el("span","iso",f.isolation);
+  isoTag.title=f.isolation==="worktree"
+    ? "Each agent works in its own private git branch/copy of the project."
+    : "All agents in this folder work directly in the same project directory.";
+  bar.appendChild(isoTag);
+  const stopAll=el("button","ghost mini","Stop all");
+  stopAll.title="Stop every running agent in this folder (conversations stay and can be resumed)";
+  stopAll.onclick=()=>api("POST",`/api/folders/${f.id}/stop`);
+  bar.appendChild(stopAll);
+  const add=el("button","mini","+ Agent"); add.onclick=()=>openAgentModal(f.id); bar.appendChild(add);
+}
+
+function buildPanel(id){
+  const a=agents.get(id),m=a.meta;
+  const p=el("div","panel"); p.id="panel-"+id;
+  const h=el("div","phead");
+  h.appendChild(el("span","sdot s-"+m.status));
+  const nm=el("span","nm",m.name||m.id); nm.onclick=()=>{focusAgent=(focusAgent===id?null:id);renderSide();renderMain();}; h.appendChild(nm);
+  h.appendChild(el("span","id",m.id));
+  h.appendChild(el("div","spacer"));
+  const badge=el("span","badge "+m.status,m.status); badge.id="badge-"+id; h.appendChild(badge);
+  const stopB=el("button","ghost mini","■"); stopB.title="stop"; stopB.onclick=()=>api("POST",`/api/agents/${id}/stop`); h.appendChild(stopB);
+  p.appendChild(h);
+  const body=el("div","pbody"); body.id="body-"+id; p.appendChild(body);
+  const comp=el("div","pcomp");
+  const ta=el("textarea"); ta.id="ta-"+id; ta.placeholder="Send a follow-up… (⌘/Ctrl+Enter)";
+  ta.onkeydown=e=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter") sendFollow(id); };
+  const sb=el("button","primary","Send"); sb.onclick=()=>sendFollow(id);
+  comp.appendChild(ta); comp.appendChild(sb); p.appendChild(comp);
+  return p;
+}
+function renderPanelBody(id){ const body=$("#body-"+id); if(!body) return; body.innerHTML=""; const a=agents.get(id); for(const b of a.blocks) body.appendChild(makeBlock(b)); body.scrollTop=body.scrollHeight; updateComposer(id); }
+function appendBlockDom(id,b){ const body=$("#body-"+id); if(!body) return; const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<60; body.appendChild(makeBlock(b)); if(atBottom) body.scrollTop=body.scrollHeight; }
+function liveUpdate(id,b){ if(!isVisible(id)||!b._dom) return; b._dom.textContent=b.text; const body=$("#body-"+id); if(body){const atB=body.scrollHeight-body.scrollTop-body.clientHeight<80; if(atB) body.scrollTop=body.scrollHeight;} }
+function makeBlock(b){
+  if(b.kind==="user"){const d=el("div","blk b-user");d.appendChild(el("div","who","user"));d.appendChild(el("div","body",b.text));return d;}
+  if(b.kind==="text"){const d=el("div","blk b-text");d.appendChild(el("div","who","deepseek"));const body=el("div","body",b.text);b._dom=body;d.appendChild(body);return d;}
+  if(b.kind==="reason"){const d=el("div","blk");const h=el("div","reason-h","▸ thinking");const body=el("div","reason",b.text);body.style.display="none";b._dom=body;h.onclick=()=>{const o=body.style.display==="none";body.style.display=o?"block":"none";h.textContent=(o?"▾":"▸")+" thinking";};d.appendChild(h);d.appendChild(body);return d;}
+  if(b.kind==="toolcall"){const d=el("div","toolcall");d.appendChild(el("span","t","⚙ "+b.name));d.appendChild(el("div","args",typeof b.args==="string"?b.args:JSON.stringify(b.args,null,1)));return d;}
+  if(b.kind==="toolres"){const d=el("div","toolres"+(b.ok?"":" err"));d.textContent="↳ "+(b.result||"");return d;}
+  if(b.kind==="divider") return el("div","divider","— "+b.text+" —");
+  return el("div");
+}
+function updateBadge(id){ const b=$("#badge-"+id); if(!b) return; const m=agents.get(id).meta; b.className="badge "+m.status; b.textContent=m.status; document.querySelectorAll("#panel-"+id+" .sdot").forEach(x=>x.className="sdot s-"+m.status); }
+function updateComposer(id){ const ta=$("#ta-"+id); if(!ta) return; const st=agents.get(id).meta.status; ta.disabled=(st==="running"||st==="starting"); ta.placeholder=ta.disabled?"agent is working…":"Send a follow-up… (⌘/Ctrl+Enter)"; }
+async function sendFollow(id){ const ta=$("#ta-"+id); const t=ta.value.trim(); if(!t) return; ta.value=""; await api("POST",`/api/agents/${id}/send`,{text:t}); }
+
+// ---------- api ----------
+async function api(method,path,body){ const r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined}); return r.json().catch(()=>({})); }
+
+// ---------- modals ----------
+$("#newFolderBtn").onclick=()=>openFolderModal();
+function openFolderModal(){ $("#nf_pick").style.display=hasNative()?"block":"none"; $("#folderOverlay").classList.add("on"); $("#nf_name").focus(); }
+$("#nf_cancel").onclick=()=>$("#folderOverlay").classList.remove("on");
+$("#nf_pick").onclick=async()=>{ try{ const p=await window.pywebview.api.pick_folder(); if(p) $("#nf_ws").value=p; }catch(e){} };
+$("#nf_create").onclick=async()=>{
+  const name=$("#nf_name").value.trim(); if(!name){$("#nf_name").focus();return;}
+  const body={name,isolation:$("#nf_iso").value}; const ws=$("#nf_ws").value.trim(); if(ws) body.workspace=ws;
+  const r=await api("POST","/api/folders",body); if(r.error){alert(r.error);return;}
+  folders.set(r.id,r);   // reflect immediately, don't wait for the ws echo
+  $("#folderOverlay").classList.remove("on"); ["nf_name","nf_ws"].forEach(i=>$("#"+i).value=""); selectFolder(r.id);
+};
+
+$("#newAgentBtn").onclick=()=>openAgentModal(openFolder||"unfiled");
+function openAgentModal(fid){
+  const sel=$("#na_folder"); sel.innerHTML="";
+  [...folders.values()].filter(f=>!f.archived).forEach(f=>{ const o=el("option",null,f.name+(f.workspace?"":" (scratch)")); o.value=f.id; sel.appendChild(o); });
+  sel.value=fid||openFolder||"unfiled";
+  $("#agentOverlay").classList.add("on"); $("#na_task").focus();
+}
+$("#na_cancel").onclick=()=>$("#agentOverlay").classList.remove("on");
+$("#na_spawn").onclick=async()=>{
+  const task=$("#na_task").value.trim(); if(!task){$("#na_task").focus();return;}
+  const body={task,folder:$("#na_folder").value};
+  const name=$("#na_name").value.trim(); if(name) body.name=name;
+  const model=$("#na_model").value.trim(); if(model) body.model=model;
+  const turns=$("#na_turns").value.trim(); if(turns) body.max_turns=parseInt(turns);
+  const tools=$("#na_tools").value.trim(); if(tools) body.allowed_tools=tools.split(",").map(s=>s.trim()).filter(Boolean);
+  const r=await api("POST","/api/agents",body); if(r.error){alert(r.error);return;}
+  if(r.id) ensureAgent(r.id,r);   // reflect immediately, in the right folder
+  $("#agentOverlay").classList.remove("on"); ["na_task","na_name","na_model","na_turns","na_tools"].forEach(i=>$("#"+i).value="");
+  selectFolder(r.folder_id||body.folder);
+};
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){$("#folderOverlay").classList.remove("on");$("#agentOverlay").classList.remove("on");} });
+
+connect();
+</script>
+</body>
+</html>

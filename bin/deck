@@ -1,0 +1,6 @@
+#!/bin/bash
+# deck — launcher that runs the CLI under the Deck's own venv.
+# Absolute-path safe: works no matter the caller's cwd.
+DECK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONPATH="$DECK_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+exec "$DECK_ROOT/.venv/bin/python" -m deck.cli "$@"
