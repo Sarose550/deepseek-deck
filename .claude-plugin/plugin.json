@@ -10,7 +10,6 @@
   "homepage": "https://github.com/Sarose550/deepseek-deck",
   "repository": "https://github.com/Sarose550/deepseek-deck",
   "license": "MIT",
-  "category": "development",
   "keywords": ["deepseek", "subagent", "parallel", "dag", "code-review", "delegation"],
   "skills": [
     "./skills/deck",

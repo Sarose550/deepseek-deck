@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "deepseek-deck",
+  "description": "External, parallel, resumable DeepSeek subagent runtime for Claude Code. Includes four skills: deck, supervisor-dag, dsar, and delegate-to-deepseek.",
+  "owner": {
+    "name": "Sam Rosenstrauch",
+    "email": "sarose550@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "deepseek-deck",
+      "description": "External, parallel, resumable DeepSeek subagent runtime — spawn DeepSeek workers with live panels in a web UI at zero frontier-token cost.",
+      "author": {
+        "name": "Sam Rosenstrauch",
+        "email": "sarose550@gmail.com"
+      },
+      "category": "development",
+      "source": "./",
+      "homepage": "https://github.com/Sarose550/deepseek-deck"
+    }
+  ]
+}
