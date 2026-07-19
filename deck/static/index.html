@@ -71,7 +71,7 @@
   #grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(430px,1fr))}
   #grid.focus{grid-template-columns:1fr}
   .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
-    display:flex;flex-direction:column;min-height:280px;max-height:78vh;overflow:hidden}
+    display:flex;flex-direction:column;min-height:280px;max-height:78vh;overflow:hidden;position:relative}
   #grid.focus .panel{max-height:none;min-height:74vh}
   .phead{display:flex;align-items:center;gap:8px;padding:9px 12px;
     background:var(--panel2);border-bottom:1px solid var(--border);flex:0 0 auto}
@@ -83,7 +83,14 @@
   .badge.awaiting_input{color:var(--done);border-color:var(--done)}
   .badge.error{color:var(--err);border-color:var(--err)}
   .badge.stopped{color:var(--muted)} .badge.starting{color:var(--muted)}
-  .pbody{flex:1;overflow-y:auto;padding:12px 14px}
+  .pbody{flex:1;overflow-y:auto;padding:12px 14px;position:relative}
+  .scroll-down-btn{position:absolute;bottom:56px;left:50%;transform:translateX(-50%);z-index:10;
+    background:var(--panel2);border:1px solid var(--border);border-radius:20px;
+    padding:6px 14px;font-size:12px;color:var(--text);cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,.4);display:none;align-items:center;gap:5px;
+    transition:opacity .15s,transform .15s;white-space:nowrap}
+  .scroll-down-btn:hover{border-color:var(--accent-dim);background:var(--panel)}
+  .scroll-down-btn.show{display:inline-flex}
   .blk{margin:0 0 12px}
   .blk .who{font-size:11px;color:var(--faint);margin-bottom:3px}
   .b-user .who{color:var(--user)} .b-text .who{color:var(--accent)}
@@ -404,6 +411,16 @@ function buildPanel(id){
   const stopB=el("button","ghost mini","■"); stopB.title="stop"; stopB.onclick=()=>api("POST",`/api/agents/${id}/stop`); h.appendChild(stopB);
   p.appendChild(h);
   const body=el("div","pbody"); body.id="body-"+id; p.appendChild(body);
+  // scroll-to-bottom button
+  const scBtn=el("button","scroll-down-btn","↓ New messages");
+  scBtn.id="sc-"+id;
+  scBtn.onclick=()=>{ body.scrollTo({top:body.scrollHeight,behavior:"smooth"}); scBtn.classList.remove("show"); };
+  p.appendChild(scBtn);
+  // scroll tracking
+  body.addEventListener("scroll",()=>{
+    const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<150;
+    scBtn.classList.toggle("show",!atBottom);
+  });
   const comp=el("div","pcomp");
   const ta=el("textarea"); ta.id="ta-"+id; ta.placeholder="Send a follow-up… (⌘/Ctrl+Enter)";
   ta.onkeydown=e=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter") sendFollow(id); };
@@ -411,9 +428,9 @@ function buildPanel(id){
   comp.appendChild(ta); comp.appendChild(sb); p.appendChild(comp);
   return p;
 }
-function renderPanelBody(id){ const body=$("#body-"+id); if(!body) return; body.innerHTML=""; const a=agents.get(id); for(const b of a.blocks) body.appendChild(makeBlock(b)); body.scrollTop=body.scrollHeight; updateComposer(id); }
-function appendBlockDom(id,b){ const body=$("#body-"+id); if(!body) return; const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<60; body.appendChild(makeBlock(b)); if(atBottom) body.scrollTop=body.scrollHeight; }
-function liveUpdate(id,b){ if(!isVisible(id)||!b._dom) return; b._dom.textContent=b.text; const body=$("#body-"+id); if(body){const atB=body.scrollHeight-body.scrollTop-body.clientHeight<80; if(atB) body.scrollTop=body.scrollHeight;} }
+function renderPanelBody(id){ const body=$("#body-"+id); if(!body) return; body.innerHTML=""; const a=agents.get(id); for(const b of a.blocks) body.appendChild(makeBlock(b)); body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); updateComposer(id); }
+function appendBlockDom(id,b){ const body=$("#body-"+id); if(!body) return; const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<150; body.appendChild(makeBlock(b)); if(atBottom){ body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); } }
+function liveUpdate(id,b){ if(!isVisible(id)||!b._dom) return; b._dom.textContent=b.text; const body=$("#body-"+id); if(body){const atB=body.scrollHeight-body.scrollTop-body.clientHeight<150; if(atB){ body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); }} }
 function makeBlock(b){
   if(b.kind==="user"){const d=el("div","blk b-user");d.appendChild(el("div","who","user"));d.appendChild(el("div","body",b.text));return d;}
   if(b.kind==="text"){const d=el("div","blk b-text");d.appendChild(el("div","who","deepseek"));const body=el("div","body",b.text);b._dom=body;d.appendChild(body);return d;}
