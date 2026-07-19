@@ -20,7 +20,7 @@ execution costs zero frontier tokens.**
 
 ## Claude Code Plugin
 
-This repo is also a **Claude Code plugin** — install it to give Claude the four
+This repo is also a **Claude Code plugin** - install it to give Claude the four
 skills (`deck`, `supervisor-dag`, `dsar`, `delegate-to-deepseek`) that teach it
 to drive the Deck:
 
@@ -67,7 +67,7 @@ deepseek-deck/
 
 Tool implementations (Read/Write/Edit/Bash/Glob/Grep/NotebookEdit) and the
 workspace sandbox are imported by path from the sibling
-`deepseek-as-subagent` checkout (single source of truth — set
+`deepseek-as-subagent` checkout (single source of truth - set
 `DEEPSEEK_SUBAGENT_SRC` if it lives elsewhere).
 
 State lives under `~/.deepseek-deck/` (sessions, transcripts, per-agent default
@@ -86,7 +86,7 @@ python3 -m venv .venv
 ## Desktop app (macOS)
 
 Double-click **`DeepSeek Deck.app`** (in `/Applications`). It's a normal **Dock
-app** (our icon) that opens the Deck in a native WKWebView window — no browser
+app** (our icon) that opens the Deck in a native WKWebView window - no browser
 chrome. Closing the window quits the app, but the **daemon and any running
 workers keep going**, so relaunching from the Dock reliably reopens a window.
 It also gives the page a **native folder picker** for choosing a folder's
@@ -98,13 +98,13 @@ Under the hood it runs `deck.desktop` (pywebview); launch directly with
 
 ## Folders
 
-The sidebar is organized into **folders** — each groups several agent panels and
+The sidebar is organized into **folders** - each groups several agent panels and
 carries the **project directory** its agents run in:
 
 - A DAG/harness run creates one folder (named for the run, mounted at the
   project); ad-hoc workers land in **Unfiled** (isolated scratch dirs).
 - Create/rename/archive/delete folders in the UI or via `deck folder …`.
-- **Isolation** per folder: `shared` (default — agents work in the same dir) or
+- **Isolation** per folder: `shared` (default - agents work in the same dir) or
   `worktree` (each agent gets its own `git worktree` on its own branch).
 - One folder is open at a time; opening it tiles its panels, clicking one agent
   focuses it. Switching folders never stops the workers.
@@ -125,7 +125,7 @@ id=$(bin/deck spawn --folder $fid --task "refactor foo.py to use pathlib")
 bin/deck ps                       # list workers + status/turns/tokens
 bin/deck result $id               # COMPACT outcome (the token firewall)
 bin/deck send $id "now add tests" # follow-up; resumes the worker (full-duplex)
-bin/deck log $id                  # FULL transcript — debugging only
+bin/deck log $id                  # FULL transcript - debugging only
 bin/deck stop $id  / rm $id
 bin/deck wave --file spec.json    # spawn many at once from a JSON list
 bin/deck down                     # stop daemon
@@ -157,13 +157,13 @@ for s in deck delegate-to-deepseek dsar supervisor-dag; do
 done
 ```
 
-Claude Code picks up any directory under `~/.claude/skills/` automatically —
+Claude Code picks up any directory under `~/.claude/skills/` automatically -
 no restart needed beyond starting a new session.
 
 | Skill | Does |
 |---|---|
 | `deck` | Teaches the frontier model the `deck` CLI verbs and token-firewall discipline. |
-| `supervisor-dag` | Parent-supervisor DAG harness — parallel `Model: deepseek` nodes on the Deck. |
+| `supervisor-dag` | Parent-supervisor DAG harness - parallel `Model: deepseek` nodes on the Deck. |
 | `dsar` | Adversarial CRITIC/RESPONSE code review loop, both roles run as Deck workers. |
 | `delegate-to-deepseek` | Default delegation heuristics; routes work to the Deck by default. |
 
@@ -188,7 +188,7 @@ cat > ~/.deepseek-mcp/config.json <<'EOF'
 EOF
 # or: export DEEPSEEK_API_KEY=sk-...
 
-# tool implementations are imported from a sibling checkout — clone it too:
+# tool implementations are imported from a sibling checkout - clone it too:
 git clone https://github.com/PsChina/deepseek-as-subagent ../deepseek-as-subagent
 # or set DEEPSEEK_SUBAGENT_SRC to wherever you keep it
 
@@ -217,7 +217,7 @@ MIT - see [`LICENSE`](LICENSE). Third-party attribution for the
   reasoning must be echoed back each turn or DeepSeek 400s), executes tools in a
   threadpool so N workers run truly in parallel (default cap 12).
 - **Full-duplex**: a finished worker sits in `awaiting_input` with its history;
-  `deck send` appends a user message and resumes it — no re-spawn.
+  `deck send` appends a user message and resumes it - no re-spawn.
 - **Persistence**: every session's meta + messages + event log are on disk;
   the daemon rehydrates them on restart.
 - **Token firewall**: `deck spawn` returns only an id; `deck result` returns
