@@ -207,7 +207,7 @@ done
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). Third-party attribution for the
+MIT - see [`LICENSE`](LICENSE). Third-party attribution for the
 `delegate-to-deepseek` skill is in [`NOTICE`](NOTICE).
 
 ## Architecture notes
