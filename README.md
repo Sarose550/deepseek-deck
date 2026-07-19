@@ -1,7 +1,7 @@
 # DeepSeek Deck
 
 An external, parallel, resumable **DeepSeek subagent runtime** with a
-Claude-Code-lookalike web UI — and a `deck` CLI that a frontier model drives as if the workers were native Task subagents.
+Claude-Code-lookalike web UI - and a `deck` CLI that a frontier model drives as if the workers were native Task subagents.
 
 Anthropic doesn't let you extend Claude Code's native subagent system. The Deck
 stitches an equivalent in from the outside: a frontier model orchestrates via
