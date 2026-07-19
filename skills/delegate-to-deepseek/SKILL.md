@@ -23,6 +23,8 @@ live, resumable, operator-visible panel — at zero frontier-token cost per work
   the worker as a live, resumable panel in the Deck UI and returns only an id;
   collect the outcome with `deck result <id>` (compact). This spends **zero**
   frontier tokens per worker and is the default for all token-heavy delegation.
+  Arm a watcher right after spawning (`deck` skill's "Watching workers" section)
+  instead of hand-polling `deck ps` for the result.
 - **Fallback** (single quick one-shot, no UI/parallelism needed): direct
   `mcp__deepseek__delegate_to_deepseek(task=..., context=...)` or `/ds`.
 - **Never** wrap DeepSeek work in a native `Task` subagent (e.g. `deepseek-runner`)

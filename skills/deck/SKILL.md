@@ -88,25 +88,65 @@ at creation.
 ## Workflow patterns
 
 **Single delegation.** `id=$($DEEPSEEK_DECK_HOME/bin/deck spawn --task "…" --workspace /path)`.
-Do other work. Later: `deck ps` to check; `deck result $id` when `awaiting_input`.
+Immediately arm a watcher (see [Watching workers](#watching-workers-mandatory)
+below) so you're notified instead of polling — then do other work.
 
 **Parallel fan-out.** Issue several `deck spawn` calls **in one turn** (independent
-Bash calls run concurrently) or write a spec and `deck wave`. Capture the ids.
-The workers run truly in parallel (daemon caps concurrency, default 12). Poll
-with a single `deck ps`, not per-worker loops.
+Bash calls run concurrently) or write a spec and `deck wave`. Capture the ids,
+then arm one folder-level watcher for the whole set — not per-worker loops, and
+not manual `deck ps` checks.
 
 **Full-duplex follow-up.** After a worker is `awaiting_input`, `deck send <id>
 "next instruction"` resumes it with full history — no re-spawn, no lost context.
+If you expect a long reply, re-arm a watcher on the resumed run too.
 
 **Collect + decide.** For each finished worker, `deck result <id>`. Fold the
 compact summaries into your orchestration reasoning. Only if a result says it
 failed do you `deck log <id>` to see what happened.
 
+## Watching workers (mandatory)
+
+**Never manually poll `deck ps` for a worker you're not blocked on — arm a
+watcher and let the notification come to you.** A background worker with no
+watcher armed is a dropped thread: you either burn turns re-checking `deck ps`
+yourself, or you forget about it until the user asks. Right after every `deck
+spawn` / `deck wave` whose result you need but aren't waiting on synchronously:
+
+- **One worker, one notification** — use `Bash` with `run_in_background: true`
+  running a poll-until-done loop that exits as soon as the worker leaves
+  `running`/`starting`:
+  ```bash
+  id=<worker-id>
+  until s=$("$DEEPSEEK_DECK_HOME/bin/deck" ps --json | \
+      python3 -c "import json,sys;d=json.load(sys.stdin);a=[x for x in d['agents'] if x['id']=='$id'];print(a[0]['status'] if a else 'gone')"); \
+      [ "$s" != "running" ] && [ "$s" != "starting" ]; do
+    :
+  done 2>/dev/null || true
+  echo "worker $id -> $s"
+  ```
+  (Poll cadence lives inside the loop — 15–30s `sleep` per iteration is enough;
+  don't busy-loop.) You get exactly one completion ping and can keep working
+  until then.
+- **A whole folder / wave (several workers)** — use `Monitor` with a command
+  that polls `deck ps --json` on an interval, diffs the set of ids no longer
+  `running`/`starting` against the previous poll, and prints one line per
+  newly-finished id; let it exit once none remain running. This gives one
+  notification per worker as it lands, in arrival order, instead of a single
+  blocking wait for the slowest one.
+- Either way, **the watcher's job is only to tell you a worker is done** — it
+  must not itself pull `deck log` or dump transcripts; when notified, follow up
+  with `deck result <id>` per the token-firewall rule above.
+- This replaces the old "check `deck ps` occasionally" habit everywhere it
+  appears in this skill (and in `supervisor-dag`, `dsar`, `delegate-to-deepseek`
+  when they dispatch through the Deck) — arm the watcher, don't hand-poll.
+
 ## Discipline (velocity + token economy)
 
-- **Don't poll in a tight loop.** Spawn, then either do other useful work or
-  wait for the operator; check `deck ps` occasionally. Each poll is a Bash call,
-  not free frontier reasoning.
+- **Don't poll in a tight loop, and don't hand-poll at all.** Spawn, arm a
+  watcher per [Watching workers](#watching-workers-mandatory), then do other
+  useful work or wait for the operator until it notifies you. Manual `deck ps`
+  checks spend a Bash call and a turn on something a background watcher does
+  for free.
 - **Give workers a confined workspace** (`--workspace`) so parallel workers don't
   clobber each other. Workers are sandboxed to their workspace and cannot run
   network/install commands (curl/wget/ssh/pip install are blocked) — pre-fetch

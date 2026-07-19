@@ -66,7 +66,7 @@ The supervisor MUST route dispatch according to that value:
 
 | `Model:` | Dispatch mechanism | Notes |
 |---|---|---|
-| `deepseek` | `$DEEPSEEK_DECK_HOME/bin/deck spawn --folder <run folder id> --task "<...>" [--name <node id>] [--tools ...]` via Bash (create the run's folder first, see above). Capture the printed id. Fan out a whole ready-set by issuing several `deck spawn` calls in one turn, or `deck wave --file <spec>`. Collect with `deck result <id>` (compact). See the `deck` skill. | The supervisor MUST NOT do the delegable work itself. Do NOT use native `Task` subagents for worker nodes — DeepSeek workers are the only workers. |
+| `deepseek` | `$DEEPSEEK_DECK_HOME/bin/deck spawn --folder <run folder id> --task "<...>" [--name <node id>] [--tools ...]` via Bash (create the run's folder first, see above). Capture the printed id. Fan out a whole ready-set by issuing several `deck spawn` calls in one turn, or `deck wave --file <spec>`. Collect with `deck result <id>` (compact). See the `deck` skill. | The supervisor MUST NOT do the delegable work itself. Do NOT use native `Task` subagents for worker nodes — DeepSeek workers are the only workers. **Immediately after dispatching a wave, arm a watcher (Monitor, or backgrounded Bash for a single node) per the `deck` skill's "Watching workers" section — do not hand-poll `deck ps`/`deck result` in a loop waiting for the wave to finish.** |
 | `supervisor` | Supervisor executes inline | Coordination + reasoning-heavy judgment (board, merges, tagging, review). The frontier model is the only non-DeepSeek component, so nodes needing frontier judgment are done here inline, not delegated. MUST NOT touch files owned by an in-flight `deepseek` node's workspace. |
 
 There is no default. A node without `Model:` is malformed and MUST NOT be dispatched.
@@ -206,6 +206,9 @@ while not done:
                     fan out a ready-set with several spawns in one turn or `deck wave`
     supervisor   -> supervisor executes inline (coordination + frontier judgment)
 
+  # if this wave dispatched any deepseek nodes, arm a watcher now (deck skill's
+  # "Watching workers" section) instead of hand-polling `deck ps` for the wave
+
   on each completion:
     # for any node whose Allowed files EXCLUDE source it read/analyzed
     # (e.g. "propose a patch, don't edit src/"), verify the exclusion held:
@@ -234,6 +237,7 @@ R_CLOSE:
 - Reviving old ephemeral boards wholesale as if they were current
 - Dispatching a `Model: deepseek` node via a native `Task` subagent instead of the `deck` CLI (burns frontier tokens per worker — the whole thing the Deck exists to avoid)
 - Pulling `deck log` (full transcript) into supervisor context for a node that succeeded — use `deck result` (compact); full transcripts are for debugging failures only
+- Hand-polling `deck ps` / `deck result` in a loop to wait out a wave instead of arming a Monitor (or backgrounded Bash for a single node) — see the `deck` skill's "Watching workers" section
 - Supervisor reading a delegated node's `Allowed files` "just to see" — even
   when the active lock has a bug and permits it, the intent is prohibited
 - Leaving the active lock file in place past the wave boundary (blocks

@@ -17,7 +17,7 @@ user_invocable: true
 >          --task-file /tmp/dsar-critic-body-${REVIEW_ID}.md \
 >          --tools "Read,Glob,Grep,Bash,Write")           # RESPONSE adds Edit
 >    ```
->    (The *prompt body* files under `/tmp/dsar-*-body-*.md` are written by Claude, not a worker, so `/tmp` is fine for those.) Then poll `deck ps` until the worker is `awaiting_input`, and `Read` the artifact it wrote under `${REPO_ROOT}/.dsar/`. CRITIC tools omit `Edit` (auditor); RESPONSE gets the full set including `Edit`. One worker per role per round (fresh spawn each round — matches the stateless design).
+>    (The *prompt body* files under `/tmp/dsar-*-body-*.md` are written by Claude, not a worker, so `/tmp` is fine for those.) Then arm a watcher for this worker (Monitor, or backgrounded Bash — see the `deck` skill's "Watching workers" section) instead of hand-polling `deck ps`; when it reports `awaiting_input`, `Read` the artifact it wrote under `${REPO_ROOT}/.dsar/`. CRITIC tools omit `Edit` (auditor); RESPONSE gets the full set including `Edit`. One worker per role per round (fresh spawn each round — matches the stateless design).
 > 3. **No native Task subagents, no direct MCP.** The `deepseek-runner` wrapper and direct `mcp__deepseek__delegate_to_deepseek` paths are retired here — worker cost stays on DeepSeek, orchestration stays with Claude.
 
 Three-role loop on existing changes/plan:
@@ -167,7 +167,7 @@ id=$($DEEPSEEK_DECK_HOME/bin/deck spawn \
       --tools "Read,Glob,Grep,Bash,Write")
 ```
 
-Poll `$DEEPSEEK_DECK_HOME/bin/deck ps` until `id` is `awaiting_input` (or `deck result ${id}` shows done), then proceed to Step 4.4. Do not read `TARGET_PATHS`; only `.dsar/review-${REVIEW_ID}.md`.
+Arm a watcher for `id` (Monitor, or backgrounded Bash — see the `deck` skill's "Watching workers" section) instead of hand-polling `deck ps`; when it reports `awaiting_input`, proceed to Step 4.4. Do not read `TARGET_PATHS`; only `.dsar/review-${REVIEW_ID}.md`.
 
 > **Scope note.** The active lock binds *Claude*, not the DeepSeek sub-session. The sub-session runs outside Claude Code's permission harness through MCP and MUST be allowed to read the target — otherwise the review is meaningless. What the sub-session cannot mutate is guarded by the `<reviewer_permissions>` prompt block, which is wording, not a hard block. Documenting rather than pretending otherwise.
 
@@ -314,7 +314,8 @@ id=$($DEEPSEEK_DECK_HOME/bin/deck spawn \
       --tools "Read,Write,Edit,Bash,Glob,Grep")
 ```
 
-Poll `deck ps` until `awaiting_input`, then proceed to Step 6.4. The worker edits
+Arm a watcher (Monitor, or backgrounded Bash) instead of hand-polling `deck ps`;
+when it reports `awaiting_input`, proceed to Step 6.4. The worker edits
 the target source in place inside its workspace; Claude verifies via the next
 CRITIC round, never by reading `TARGET_PATHS` directly.
 
