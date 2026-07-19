@@ -51,7 +51,7 @@ def create_app() -> FastAPI:
         task = (body.get("task") or "").strip()
         if not task:
             return JSONResponse({"error": "task is required"}, status_code=400)
-        s = manager.create(
+        s = await manager.create(
             task=task, name=body.get("name"),
             workspace=body.get("workspace"), model=body.get("model"),
             max_turns=body.get("max_turns"), allowed_tools=body.get("allowed_tools"),

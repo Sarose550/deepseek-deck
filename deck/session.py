@@ -166,10 +166,23 @@ class AgentSession:
                    folder_id=self.folder_id)
         self._task = asyncio.create_task(self._run_cycle())
 
+    def _clean_orphaned_toolcalls(self) -> None:
+        """Strip any trailing assistant message that has tool_calls but no
+        matching tool-result messages after it.  Such orphaned messages can
+        appear when an agent is stopped mid‑tool‑execution; the DeepSeek API
+        rejects them on the next request."""
+        while self.messages:
+            last = self.messages[-1]
+            if last.get("role") == "assistant" and last.get("tool_calls"):
+                self.messages.pop()
+            else:
+                break
+
     def send(self, text: str) -> bool:
         """Append a follow-up user message and resume the loop."""
         if self.status == "running":
             return False
+        self._clean_orphaned_toolcalls()
         self.messages.append({"role": "user", "content": text})
         self._persist_messages()
         self._emit("user_message", text=text)
@@ -275,9 +288,9 @@ class AgentSession:
                 for i, s in sorted(toolcalls.items())
             ]
         self.messages.append(amsg)
-        self._persist_messages()
 
         if not toolcalls:
+            self._persist_messages()
             self.final_message = content or "(empty response)"
             return True
 
@@ -401,7 +414,43 @@ class SessionManager:
         base = uuid.uuid4().hex[:6]
         return base
 
-    def create(self, task: str, name: Optional[str] = None,
+    async def _auto_name(self, task: str) -> Optional[str]:
+        """Use deepseek-v4-flash to generate a short descriptive caption from the task."""
+        models_to_try = ["deepseek-v4-flash", self.config.model]
+        for model in models_to_try:
+            try:
+                async with self.semaphore:
+                    stream = await self.client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": "You generate very short, descriptive titles (5 words or fewer) for AI worker tasks. Respond with ONLY the title — no quotes, no punctuation, no explanation."},
+                            {"role": "user", "content": f"Task: {task[:500]}\n\nTitle:"},
+                        ],
+                        max_tokens=60,
+                        temperature=0.3,
+                        stream=True,
+                    )
+                    parts: list[str] = []
+                    async for chunk in stream:
+                        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                            parts.append(chunk.choices[0].delta.content)
+                    content = "".join(parts).strip()
+                if not content:
+                    continue
+                title = content.strip().strip('"').strip("'")
+                # sanitise: remove anything that isn't word-char, space, dash, or paren
+                title = "".join(c for c in title if c.isalnum() or c in (" ", "-", "_", "(", ")")).strip()
+                if title:
+                    return title[:40]
+            except Exception:  # noqa: BLE001 — try next model
+                continue
+        # Fallback: use first 3 meaningful words from the task
+        words = [w for w in task.replace("\n", " ").split() if len(w) > 1 and w.isalpha()]
+        if words:
+            return " ".join(words[:5])[:40]
+        return None
+
+    async def create(self, task: str, name: Optional[str] = None,
                workspace: Optional[str] = None, model: Optional[str] = None,
                max_turns: Optional[int] = None,
                allowed_tools: Optional[list[str]] = None,
@@ -415,6 +464,9 @@ class SessionManager:
                 self.broadcast({"type": "folder_created", **fobj.to_dict()})
         if fobj is None:
             fobj = self.folders.folders[_folders.UNFILED_ID]
+        # Auto-generate a name from the task if the user didn't provide one
+        if not name:
+            name = await self._auto_name(task)
         ws, worktree_repo = self._resolve_workspace(fobj, sid, workspace)
         s = AgentSession(
             self, sid, task, ws,
@@ -483,6 +535,7 @@ class SessionManager:
                 worktree_repo=meta.get("worktree_repo"),
             )
             s.messages = msgs
+            s._clean_orphaned_toolcalls()
             s.status = "awaiting_input" if meta.get("status") in ("running", "awaiting_input") else meta.get("status", "stopped")
             s.final_message = meta.get("final_message", "")
             s.turns_used = meta.get("turns_used", 0)
