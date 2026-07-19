@@ -173,6 +173,11 @@ class AgentSession:
         self.messages.append({"role": "user", "content": text})
         self._persist_messages()
         self._emit("user_message", text=text)
+        # Mark the parent folder as recently interacted with
+        self.manager.folders.touch(self.folder_id)
+        fobj = self.manager.folders.folders.get(self.folder_id)
+        if fobj:
+            self.manager.broadcast({"type": "folder_updated", **fobj.to_dict()})
         self._task = asyncio.create_task(self._run_cycle())
         return True
 
@@ -419,6 +424,8 @@ class SessionManager:
             name=name, folder_id=fobj.id, worktree_repo=worktree_repo,
         )
         self.sessions[sid] = s
+        self.folders.touch(fobj.id)
+        self.broadcast({"type": "folder_updated", **fobj.to_dict()})
         s.start()
         return s
 

@@ -36,7 +36,8 @@
   button.mini{padding:2px 7px;font-size:12px}
   #body{display:flex;flex:1;min-height:0}
   aside{width:270px;flex:0 0 auto;background:var(--panel);
-    border-right:1px solid var(--border);overflow-y:auto;padding:8px;display:flex;flex-direction:column}
+    border-right:1px solid var(--border);padding:8px;display:flex;flex-direction:column;overflow:hidden}
+  aside > #side{overflow-y:auto;flex:1;min-height:0}
   aside .grp{color:var(--faint);font-size:11px;text-transform:uppercase;
     letter-spacing:1px;margin:12px 6px 4px;display:flex;align-items:center}
   aside .grp .spacer{flex:1}
@@ -133,6 +134,13 @@
   .ctx div{padding:7px 12px;border-radius:5px;cursor:pointer;font-size:12px}
   .ctx div:hover{background:var(--panel)}
   .ctx div.danger{color:var(--err)}
+  .sb{display:flex;align-items:center;gap:6px;margin:4px 2px 8px;padding:0 2px;flex-shrink:0}
+  .sb input{flex:1;background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px;outline:none}
+  .sb input:focus{border-color:var(--accent-dim)}
+  .sb .clear{color:var(--faint);cursor:pointer;font-size:14px;padding:2px 4px;display:none}
+  .sb .clear.show{display:inline}
+  .sb .clear:hover{color:var(--text)}
 </style>
 </head>
 <body>
@@ -145,7 +153,7 @@
     <button class="primary" id="newAgentBtn">+ Agent</button>
   </header>
   <div id="body">
-    <aside id="side"></aside>
+    <aside><div class="sb"><input id="folderSearch" type="text" placeholder="Search folders…" autocomplete="off"><span class="clear" id="searchClear">✕</span></div><div id="side"></div></aside>
     <main id="main"></main>
   </div>
 </div>
@@ -304,14 +312,42 @@ async function hydrate(id){
 }
 function safeArgs(s){ try{return JSON.parse(s);}catch(e){return {_raw:(s||"").slice(0,200)};} }
 
+let folderSearchQuery = "";
+
 // ---------- sidebar ----------
 function renderSide(){
   const side=$("#side"); side.innerHTML="";
-  const active=[...folders.values()].filter(f=>!f.archived);
-  const arch=[...folders.values()].filter(f=>f.archived);
-  const g=el("div","grp"); g.appendChild(el("span",null,"folders"));
-  side.appendChild(g);
-  active.forEach(f=>side.appendChild(folderRow(f)));
+  const q=folderSearchQuery.toLowerCase().trim();
+
+  // Helper: does a folder match the search query (by name or by agent names inside)?
+  const matchFolder=(f)=>{
+    if(!q) return true;
+    if(f.name.toLowerCase().includes(q)) return true;
+    return agentsIn(f.id).some(a=>(a.meta.name||"").toLowerCase().includes(q));
+  };
+
+  // Sort by last_interacted_at descending (most recent first), unfiled always last
+  const sortFn=(a,b)=>{
+    if(a.id==="unfiled") return 1;
+    if(b.id==="unfiled") return -1;
+    return (b.last_interacted_at||0)-(a.last_interacted_at||0);
+  };
+
+  const all=[...folders.values()];
+  const active=all.filter(f=>!f.archived&&matchFolder(f)).sort(sortFn);
+  const arch=all.filter(f=>f.archived&&matchFolder(f)).sort(sortFn);
+
+  if(!active.length && !arch.length && q){
+    const empty=el("div","grp"); empty.style.color="var(--muted)"; empty.style.textTransform="none";
+    empty.appendChild(el("span",null,"No folders match “"+q+"”"));
+    side.appendChild(empty);
+    return;
+  }
+  if(active.length){
+    const g=el("div","grp"); g.appendChild(el("span",null,"folders"));
+    side.appendChild(g);
+    active.forEach(f=>side.appendChild(folderRow(f)));
+  }
   if(arch.length){
     const ga=el("div","grp"); ga.appendChild(el("span",null,"archived")); side.appendChild(ga);
     arch.forEach(f=>side.appendChild(folderRow(f)));
@@ -455,7 +491,7 @@ function makeBlock(b){
 }
 function updateBadge(id){ const b=$("#badge-"+id); if(!b) return; const m=agents.get(id).meta; b.className="badge "+m.status; b.textContent=m.status; document.querySelectorAll("#panel-"+id+" .sdot").forEach(x=>x.className="sdot s-"+m.status); }
 function updateComposer(id){ const ta=$("#ta-"+id); if(!ta) return; const st=agents.get(id).meta.status; ta.disabled=(st==="running"||st==="starting"); ta.placeholder=ta.disabled?"agent is working…":"Send a follow-up… (⌘/Ctrl+Enter)"; }
-async function sendFollow(id){ const ta=$("#ta-"+id); const t=ta.value.trim(); if(!t) return; ta.value=""; await api("POST",`/api/agents/${id}/send`,{text:t}); }
+async function sendFollow(id){ const ta=$("#ta-"+id); const t=ta.value.trim(); if(!t) return; ta.value=""; await api("POST",`/api/agents/${id}/send`,{text:t}); const a=agents.get(id); if(a){const fid=a.meta.folder_id; if(fid&&folders.has(fid)){folders.get(fid).last_interacted_at=Date.now()/1000;renderSide();}} }
 
 // ---------- api ----------
 async function api(method,path,body){ const r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined}); return r.json().catch(()=>({})); }
@@ -490,10 +526,29 @@ $("#na_spawn").onclick=async()=>{
   const tools=$("#na_tools").value.trim(); if(tools) body.allowed_tools=tools.split(",").map(s=>s.trim()).filter(Boolean);
   const r=await api("POST","/api/agents",body); if(r.error){alert(r.error);return;}
   if(r.id) ensureAgent(r.id,r);   // reflect immediately, in the right folder
+  const afid=r.folder_id||body.folder;
+  // Touch the folder locally so it sorts to the top right away (WS echo follows)
+  if(afid && folders.has(afid)) folders.get(afid).last_interacted_at=Date.now()/1000;
   $("#agentOverlay").classList.remove("on"); ["na_task","na_name","na_model","na_turns","na_tools"].forEach(i=>$("#"+i).value="");
-  selectFolder(r.folder_id||body.folder);
+  selectFolder(afid);
 };
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){$("#folderOverlay").classList.remove("on");$("#agentOverlay").classList.remove("on");} });
+
+// ---------- sidebar search ----------
+const searchInput=$("#folderSearch");
+const searchClear=$("#searchClear");
+searchInput.addEventListener("input",()=>{
+  folderSearchQuery=searchInput.value;
+  searchClear.classList.toggle("show",!!folderSearchQuery);
+  renderSide();
+});
+searchClear.addEventListener("click",()=>{
+  searchInput.value="";
+  folderSearchQuery="";
+  searchClear.classList.remove("show");
+  renderSide();
+  searchInput.focus();
+});
 
 connect();
 </script>

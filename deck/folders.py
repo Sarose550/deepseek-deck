@@ -36,6 +36,11 @@ class Folder:
     archived: bool = False
     source: str = "manual"                    # 'manual' | 'dag' | 'unfiled'
     created_at: float = field(default_factory=time.time)
+    last_interacted_at: float = field(default_factory=time.time)
+
+    def touch(self) -> None:
+        """Update last_interacted_at to now (called when agents are created or conversed with)."""
+        self.last_interacted_at = time.time()
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -127,9 +132,16 @@ class FolderStore:
         self._save()
         return True
 
+    def touch(self, fid: str) -> None:
+        """Mark a folder as recently interacted with."""
+        f = self.folders.get(fid)
+        if f:
+            f.touch()
+            self._save()
+
     def list(self) -> list[dict]:
         return [f.to_dict() for f in sorted(self.folders.values(),
-                                            key=lambda f: (f.id != UNFILED_ID, f.created_at))]
+                                            key=lambda f: (f.id != UNFILED_ID, -f.last_interacted_at))]
 
 
 # --- worktree helpers ------------------------------------------------------
