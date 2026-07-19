@@ -72,7 +72,7 @@
   #grid.focus{grid-template-columns:1fr}
   .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
     display:flex;flex-direction:column;min-height:280px;max-height:78vh;overflow:hidden;position:relative}
-  #grid.focus .panel{max-height:none;min-height:74vh}
+  #grid.focus .panel{max-height:calc(100vh - 110px);min-height:74vh}
   .phead{display:flex;align-items:center;gap:8px;padding:9px 12px;
     background:var(--panel2);border-bottom:1px solid var(--border);flex:0 0 auto}
   .phead .nm{font-weight:600;cursor:pointer}
