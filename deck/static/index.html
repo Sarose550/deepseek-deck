@@ -98,6 +98,18 @@
   .b-user .who{color:var(--user)} .b-text .who{color:var(--accent)}
   .b-user .body{white-space:pre-wrap;color:#cfd6e6;border-left:2px solid var(--user);padding-left:9px}
   .b-text .body{white-space:pre-wrap}
+  .b-text .body strong{font-weight:700;color:#f0ece4}
+  .b-text .body em{font-style:italic;color:#d5d0c8}
+  .b-text .body code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;color:#e0c88e;white-space:pre-wrap}
+  .b-text .body pre{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;overflow-x:auto;margin:8px 0}
+  .b-text .body pre code{background:transparent;padding:0;border-radius:0;color:var(--text);font-size:12px}
+  .b-text .body a{color:#7aa2f7;text-decoration:underline}
+  .b-text .body h1,.b-text .body h2,.b-text .body h3,.b-text .body h4{font-weight:700;margin:10px 0 6px;line-height:1.3}
+  .b-text .body h1{font-size:16px;color:#f0ece4} .b-text .body h2{font-size:15px;color:#f0ece4} .b-text .body h3{font-size:14px;color:#e5e2da} .b-text .body h4{font-size:13px;color:#d5d0c8}
+  .b-text .body blockquote{border-left:2px solid var(--faint);padding-left:9px;color:var(--muted);margin:6px 0;font-style:italic}
+  .b-text .body ul,.b-text .body ol{padding-left:18px;margin:6px 0}
+  .b-text .body li{margin:2px 0}
+  .b-text .body hr{border:none;border-top:1px solid var(--border);margin:10px 0}
   .reason{border-left:2px solid var(--faint);padding-left:9px;color:var(--muted);
     white-space:pre-wrap;font-style:italic}
   .reason-h{color:var(--faint);cursor:pointer;font-size:11px;user-select:none}
@@ -479,10 +491,45 @@ function appendBlockDom(id,b){
   body.appendChild(makeBlock(b));
   if(atBottom){ body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); }
 }
-function liveUpdate(id,b){ if(!isVisible(id)||!b._dom) return; b._dom.textContent=b.text; const body=$("#body-"+id); if(body){const atB=body.scrollHeight-body.scrollTop-body.clientHeight<150; if(atB){ body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); }} }
+function liveUpdate(id,b){ if(!isVisible(id)||!b._dom) return; if(b.kind==="text") b._dom.innerHTML=md2html(b.text); else b._dom.textContent=b.text; const body=$("#body-"+id); if(body){const atB=body.scrollHeight-body.scrollTop-body.clientHeight<150; if(atB){ body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); }} }
+// ---------- lightweight markdown ----------
+function md2html(t){
+  // must run AFTER fenced-code extraction so we don't mangle code blocks
+  const fences=[];
+  let s=t.replace(/```(\w*)\n([\s\S]*?)```/g,(_,lang,code)=>{
+    const i=fences.length; fences.push({lang,code:code.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}); return "\x00F"+i+"\x00F";
+  });
+  // inline code (backticks — single/double, no newlines)
+  s=s.replace(/``([^`\n]+?)``/g,(_,c)=>"<code>"+c.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")+"</code>");
+  s=s.replace(/`([^`\n]+?)`/g,(_,c)=>"<code>"+c.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")+"</code>");
+  // bold and italic (do bold first — two asterisks)
+  s=s.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+  s=s.replace(/\*(.+?)\*/g,"<em>$1</em>");
+  // links [text](url)
+  s=s.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // headers (must be at start of line)
+  s=s.replace(/^#### (.+)/gm,"<h4>$1</h4>");
+  s=s.replace(/^### (.+)/gm,"<h3>$1</h3>");
+  s=s.replace(/^## (.+)/gm,"<h2>$1</h2>");
+  s=s.replace(/^# (.+)/gm,"<h1>$1</h1>");
+  // blockquotes
+  s=s.replace(/^> (.+)/gm,"<blockquote>$1</blockquote>");
+  // ordered lists (process before unordered so <ol> wrappers win)
+  s=s.replace(/^(\s*)\d+\. (.+)/gm,'$1<li>$2</li>');
+  s=s.replace(/((?:<li>.*<\/li>\n?)+)/g,'<ol>$1</ol>');
+  // unordered lists (skip <ol>-wrapped groups)
+  s=s.replace(/^(\s*)[-*] (.+)/gm,'$1<li>$2</li>');
+  s=s.replace(/((?:<li>.*<\/li>\n?)+)/g,(m)=>{if(m.includes("<ol"))return m;return'<ul>'+m+'</ul>';});
+  // horizontal rules
+  s=s.replace(/^---$/gm,"<hr>");
+  // restore fenced code blocks
+  s=s.replace(/\x00F(\d+)\x00F/g,(_,i)=>{const f=fences[i];return'<pre><code'+(f.lang?' class="language-'+f.lang+'"':'')+'>'+f.code+'</code></pre>';});
+  return s;
+}
+
 function makeBlock(b){
   if(b.kind==="user"){const d=el("div","blk b-user");d.appendChild(el("div","who","user"));d.appendChild(el("div","body",b.text));return d;}
-  if(b.kind==="text"){const d=el("div","blk b-text");d.appendChild(el("div","who","deepseek"));const body=el("div","body",b.text);b._dom=body;d.appendChild(body);return d;}
+  if(b.kind==="text"){const d=el("div","blk b-text");d.appendChild(el("div","who","deepseek"));const body=el("div","body");body.innerHTML=md2html(b.text);b._dom=body;d.appendChild(body);return d;}
   if(b.kind==="reason"){const d=el("div","blk");const h=el("div","reason-h","▸ thinking");const body=el("div","reason",b.text);body.style.display="none";b._dom=body;h.onclick=()=>{const o=body.style.display==="none";body.style.display=o?"block":"none";h.textContent=(o?"▾":"▸")+" thinking";};d.appendChild(h);d.appendChild(body);return d;}
   if(b.kind==="toolcall"){const d=el("div","toolcall");d.appendChild(el("span","t","⚙ "+b.name));d.appendChild(el("div","args",typeof b.args==="string"?b.args:JSON.stringify(b.args,null,1)));return d;}
   if(b.kind==="toolres"){const d=el("div","toolres"+(b.ok?"":" err"));d.textContent="↳ "+(b.result||"");return d;}
