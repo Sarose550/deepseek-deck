@@ -319,7 +319,13 @@ async function hydrate(id){
         for(const tc of m.tool_calls||[]) a.blocks.push({kind:"toolcall",name:tc.function.name,args:safeArgs(tc.function.arguments),id:tc.id});
       } else if(m.role==="tool") a.blocks.push({kind:"toolres",ok:!(m.content||"").startsWith("ERROR:"),result:m.content,id:m.tool_call_id});
     }
-    a.hydrated=true; if(isVisible(id)) renderPanelBody(id);
+    a.hydrated=true;
+    // add terminal divider for completed agents (survives page refresh)
+    const st=a.meta.status;
+    if(st==="awaiting_input"||st==="error"||st==="stopped"){
+      a.blocks.push({kind:"divider",text:`done · ${a.meta.turns_used||0} turns · ${(a.meta.tokens||{}).total||0} tokens`});
+    }
+    if(isVisible(id)) renderPanelBody(id);
   }catch(e){}
 }
 function safeArgs(s){ try{return JSON.parse(s);}catch(e){return {_raw:(s||"").slice(0,200)};} }
