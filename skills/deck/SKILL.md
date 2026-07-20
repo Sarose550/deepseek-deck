@@ -112,33 +112,87 @@ watcher armed is a dropped thread: you either burn turns re-checking `deck ps`
 yourself, or you forget about it until the user asks. Right after every `deck
 spawn` / `deck wave` whose result you need but aren't waiting on synchronously:
 
-- **One worker, one notification** — use `Bash` with `run_in_background: true`
-  running a poll-until-done loop that exits as soon as the worker leaves
-  `running`/`starting`:
+These scripts are tested (bash and zsh) — use them verbatim, don't improvise a
+variant. Two hazards they specifically guard against, both hit in practice:
+
+1. **`status` is a reserved read-only word in zsh.** `status=$(...)` fails
+   with `read-only variable: status` on any machine whose shell is zsh
+   (`echo $SHELL` — common on macOS). Never bind a variable to that name; the
+   scripts below use `st`.
+2. **A transient/malformed `deck ps` response must never read as "done."** A
+   naive poll that does `id in response? status : "gone"` will occasionally
+   see one hiccuped/empty JSON payload from the daemon and misreport `gone`
+   for a worker that's still mid-run — a false completion. The scripts below
+   only ever conclude "done" on an explicit `awaiting_input`/`error`/`stopped`
+   status; a parse failure or missing id maps to `POLLFAIL` and is retried on
+   the next tick, never treated as terminal.
+
+- **One worker, one notification** — `Bash` with `run_in_background: true`:
   ```bash
+  DECK="$DEEPSEEK_DECK_HOME/bin/deck"
   id=<worker-id>
-  until s=$("$DEEPSEEK_DECK_HOME/bin/deck" ps --json | \
-      python3 -c "import json,sys;d=json.load(sys.stdin);a=[x for x in d['agents'] if x['id']=='$id'];print(a[0]['status'] if a else 'gone')"); \
-      [ "$s" != "running" ] && [ "$s" != "starting" ]; do
-    :
-  done 2>/dev/null || true
-  echo "worker $id -> $s"
+  while :; do
+    st=$("$DECK" ps --json 2>/dev/null | python3 -c "
+  import json,sys
+  try:
+      d=json.load(sys.stdin)
+      a=[x for x in d['agents'] if x['id']=='$id']
+      print(a[0]['status'] if a else 'POLLFAIL')
+  except Exception:
+      print('POLLFAIL')
+  " 2>/dev/null)
+    case "$st" in
+      awaiting_input|error|stopped) echo "worker $id -> $st"; break ;;
+    esac
+    sleep 20
+  done
   ```
-  (Poll cadence lives inside the loop — 15–30s `sleep` per iteration is enough;
-  don't busy-loop.) You get exactly one completion ping and can keep working
-  until then.
-- **A whole folder / wave (several workers)** — use `Monitor` with a command
-  that polls `deck ps --json` on an interval, diffs the set of ids no longer
-  `running`/`starting` against the previous poll, and prints one line per
-  newly-finished id; let it exit once none remain running. This gives one
-  notification per worker as it lands, in arrival order, instead of a single
-  blocking wait for the slowest one.
+  One completion ping; keep working until it fires.
+
+- **A whole folder / wave (several workers)** — `Monitor` with a command that
+  emits one line per worker as it finishes, in arrival order, and exits once
+  all are accounted for. No associative arrays (portability — POSIX `case`
+  only), so track "seen" ids in a temp file instead:
+  ```bash
+  DECK="$DEEPSEEK_DECK_HOME/bin/deck"
+  ids="<id1> <id2> <id3>"        # fill in from spawn/wave output
+  seen_file=$(mktemp)
+  remaining=$(echo $ids | wc -w)
+  while [ "$remaining" -gt 0 ]; do
+    out=$("$DECK" ps --json 2>/dev/null)
+    for id in $ids; do
+      if ! grep -q "^$id\$" "$seen_file" 2>/dev/null; then
+        st=$(printf '%s' "$out" | python3 -c "
+  import json,sys
+  try:
+      d=json.load(sys.stdin)
+      a=[x for x in d['agents'] if x['id']=='$id']
+      print(a[0]['status'] if a else 'POLLFAIL')
+  except Exception:
+      print('POLLFAIL')
+  " 2>/dev/null)
+        case "$st" in
+          awaiting_input|error|stopped)
+            echo "worker $id -> $st"
+            echo "$id" >> "$seen_file"
+            remaining=$((remaining-1))
+            ;;
+        esac
+      fi
+    done
+    sleep 20
+  done
+  echo "wave complete"
+  rm -f "$seen_file"
+  ```
+
 - Either way, **the watcher's job is only to tell you a worker is done** — it
   must not itself pull `deck log` or dump transcripts; when notified, follow up
   with `deck result <id>` per the token-firewall rule above.
 - This replaces the old "check `deck ps` occasionally" habit everywhere it
   appears in this skill (and in `supervisor-dag`, `dsar`, `delegate-to-deepseek`
-  when they dispatch through the Deck) — arm the watcher, don't hand-poll.
+  when they dispatch through the Deck) — arm the watcher, don't hand-poll, and
+  use the scripts above rather than reinventing the polling logic each time.
 
 ## Discipline (velocity + token economy)
 
