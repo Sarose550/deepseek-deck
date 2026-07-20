@@ -14,3 +14,7 @@ __pycache__/
 # Secrets — never commit API keys
 .deepseek-mcp/
 config.json
+
+# Content strategy (not part of the product)
+CONTENT_STRATEGY.md
+POST_DRAFTS.md

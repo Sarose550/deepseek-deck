@@ -9,6 +9,8 @@ the CLI, DeepSeek does all the token-heavy execution, and you watch live panels
 in the browser. **Frontier tokens are spent only on orchestration; worker
 execution costs zero frontier tokens.**
 
+![Four DeepSeek workers running in parallel in the Deck UI](multipanel.png)
+
 ## Why
 
 | | Native Task subagent | `deepseek-runner` wrapper | **DeepSeek Deck** |
@@ -133,6 +135,8 @@ bin/deck down                     # stop daemon
 
 Workers are sandboxed to their `--workspace` (default: an isolated
 `~/.deepseek-deck/workspaces/<id>`) and cannot run network/install commands.
+
+![Single agent panel streaming tool calls and reasoning](singlepanel.png)
 
 ## How Fable drives it
 
