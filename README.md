@@ -138,7 +138,7 @@ Workers are sandboxed to their `--workspace` (default: an isolated
 
 ![Single agent panel streaming tool calls and reasoning](singlepanel.png)
 
-## How Fable drives it
+## How the frontier model drives it
 
 The `deck` skill teaches the frontier model the CLI verbs and the token-firewall
 discipline (`deck result`, not `deck log`). The `supervisor-dag` skill routes
