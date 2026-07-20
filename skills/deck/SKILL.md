@@ -112,8 +112,10 @@ watcher armed is a dropped thread: you either burn turns re-checking `deck ps`
 yourself, or you forget about it until the user asks. Right after every `deck
 spawn` / `deck wave` whose result you need but aren't waiting on synchronously:
 
-These scripts are tested (bash and zsh) — use them verbatim, don't improvise a
-variant. Two hazards they specifically guard against, both hit in practice:
+These scripts are tested end-to-end against real Deck workers on both bash and
+zsh — use them verbatim, don't improvise a variant. Three hazards they
+specifically guard against, all three hit in practice (the third one **passed
+silent** for an entire watch cycle before being caught — see below):
 
 1. **`status` is a reserved read-only word in zsh.** `status=$(...)` fails
    with `read-only variable: status` on any machine whose shell is zsh
@@ -126,6 +128,17 @@ variant. Two hazards they specifically guard against, both hit in practice:
    only ever conclude "done" on an explicit `awaiting_input`/`error`/`stopped`
    status; a parse failure or missing id maps to `POLLFAIL` and is retried on
    the next tick, never treated as terminal.
+3. **zsh does not word-split unquoted `$var` the way bash/sh do.**
+   `ids="a b c"; for id in $ids; do …; done` iterates **once**, with `id`
+   bound to the literal string `"a b c"` — not three times. On bash this is
+   the standard, correct idiom; on zsh it silently degrades to a single
+   bogus iteration, which then never matches a real agent id and polls
+   `POLLFAIL` forever — a watcher that runs indefinitely, produces zero
+   output, and never notifies you, which looks exactly like "still working"
+   instead of "broken." This is why a multi-id list below is a real array
+   (`ids=(a b c)`) iterated with `for id in "${ids[@]}"` — that syntax
+   word-splits correctly and identically in both bash and zsh. Never go back
+   to a space-separated string + bare `for id in $ids`.
 
 - **One worker, one notification** — `Bash` with `run_in_background: true`:
   ```bash
@@ -151,16 +164,18 @@ variant. Two hazards they specifically guard against, both hit in practice:
 
 - **A whole folder / wave (several workers)** — `Monitor` with a command that
   emits one line per worker as it finishes, in arrival order, and exits once
-  all are accounted for. No associative arrays (portability — POSIX `case`
-  only), so track "seen" ids in a temp file instead:
+  all are accounted for. Use a real array for the id list (see hazard #3
+  above — a space-separated string + bare `for id in $ids` silently breaks on
+  zsh) and track "seen" ids in a temp file (avoids associative-array syntax
+  differences between bash and zsh):
   ```bash
   DECK="$DEEPSEEK_DECK_HOME/bin/deck"
-  ids="<id1> <id2> <id3>"        # fill in from spawn/wave output
+  ids=(<id1> <id2> <id3>)        # real array — fill in from spawn/wave output
   seen_file=$(mktemp)
-  remaining=$(echo $ids | wc -w)
+  remaining=${#ids[@]}
   while [ "$remaining" -gt 0 ]; do
     out=$("$DECK" ps --json 2>/dev/null)
-    for id in $ids; do
+    for id in "${ids[@]}"; do
       if ! grep -q "^$id\$" "$seen_file" 2>/dev/null; then
         st=$(printf '%s' "$out" | python3 -c "
   import json,sys
