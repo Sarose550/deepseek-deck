@@ -120,6 +120,16 @@
     color:#a9c4ab;white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:160px;overflow:auto}
   .toolres.err{border-color:var(--err);color:#e0a0a0}
   .divider{color:var(--faint);font-size:11px;text-align:center;margin:10px 0;opacity:.6}
+  /* rewind */
+  .rewind-btn{display:none;position:absolute;right:4px;top:2px;z-index:5;background:var(--panel2);border:1px solid var(--border);border-radius:4px;color:var(--faint);cursor:pointer;font-size:12px;padding:1px 6px;line-height:1.4}
+  .rewind-btn:hover{color:var(--accent);border-color:var(--accent-dim)}
+  .blk{position:relative}
+  .blk:hover .rewind-btn{display:block}
+  .rewound{opacity:.35!important}
+  .rewound:hover{opacity:.55!important}
+  .rewound .rewind-btn{display:none!important}
+  .rewind-marker{border-left:2px solid var(--accent);padding:8px 10px;margin:8px 0;color:var(--accent);font-size:12px;display:flex;align-items:center;gap:8px}
+  .rewind-marker button{font-size:11px}
   .pcomp{flex:0 0 auto;display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);background:var(--panel2)}
   .pcomp textarea{flex:1;resize:none;height:38px;background:var(--bg);color:var(--text);
     border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:12px}
@@ -255,7 +265,7 @@ function connect(){
 
 function agentsIn(fid){ return [...agents.values()].filter(a=>a.meta.folder_id===fid); }
 function ensureAgent(id,meta){
-  if(!agents.has(id)) agents.set(id,{meta:meta||{id,name:id,status:"starting",folder_id:"unfiled",turns_used:0,tokens:{total:0}},blocks:[],cur:{},hydrated:false});
+  if(!agents.has(id)) agents.set(id,{meta:meta||{id,name:id,status:"starting",folder_id:"unfiled",turns_used:0,tokens:{total:0}},blocks:[],cur:{},hydrated:false,rewindIdx:null});
   else if(meta) Object.assign(agents.get(id).meta,meta);
   return agents.get(id);
 }
@@ -486,15 +496,37 @@ function renderPanelBody(id){
   const body=$("#body-"+id); if(!body) return;
   const a=agents.get(id);
   body.innerHTML="";
-  for(const b of a.blocks) body.appendChild(makeBlock(b));
+  const ri=a.rewindIdx;
+  for(let i=0;i<a.blocks.length;i++){
+    const b=a.blocks[i];
+    const el=makeBlock(b,i,id);
+    if(ri!=null && i>ri) el.classList.add("rewound");
+    body.appendChild(el);
+  }
+  // rewind marker
+  if(ri!=null){
+    const marker=el("div","rewind-marker");
+    const discarded=a.blocks.length-ri-1;
+    marker.innerHTML=`<span>↩ Rewound — ${discarded} message${discarded!==1?'s':''} below will be discarded on next send</span>`;
+    const cancel=el("button","ghost mini","Cancel rewind");
+    cancel.onclick=()=>{a.rewindIdx=null;renderPanelBody(id);};
+    marker.appendChild(cancel);
+    const children=[...body.children];
+    const after=children[ri+1];
+    if(after) body.insertBefore(marker,after);
+    else body.appendChild(marker);
+  }
   body.scrollTop=body.scrollHeight;
   const sc=$("#sc-"+id); if(sc) sc.classList.remove("show");
   updateComposer(id);
 }
 function appendBlockDom(id,b){
   const body=$("#body-"+id); if(!body) return;
+  const a=agents.get(id);
   const atBottom=body.scrollHeight-body.scrollTop-body.clientHeight<150;
-  body.appendChild(makeBlock(b));
+  const el=makeBlock(b,a.blocks.length-1,id);
+  if(a.rewindIdx!=null) el.classList.add("rewound");
+  body.appendChild(el);
   if(atBottom){ body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); }
 }
 function liveUpdate(id,b){ if(!isVisible(id)||!b._dom) return; if(b.kind==="text") b._dom.innerHTML=md2html(b.text); else b._dom.textContent=b.text; const body=$("#body-"+id); if(body){const atB=body.scrollHeight-body.scrollTop-body.clientHeight<150; if(atB){ body.scrollTop=body.scrollHeight; const sc=$("#sc-"+id); if(sc) sc.classList.remove("show"); }} }
@@ -533,10 +565,17 @@ function md2html(t){
   return s;
 }
 
-function makeBlock(b){
-  if(b.kind==="user"){const d=el("div","blk b-user");d.appendChild(el("div","who","user"));d.appendChild(el("div","body",b.text));return d;}
-  if(b.kind==="text"){const d=el("div","blk b-text");d.appendChild(el("div","who","deepseek"));const body=el("div","body");body.innerHTML=md2html(b.text);b._dom=body;d.appendChild(body);return d;}
-  if(b.kind==="reason"){const d=el("div","blk");const h=el("div","reason-h","▸ thinking");const body=el("div","reason",b.text);body.style.display="none";b._dom=body;h.onclick=()=>{const o=body.style.display==="none";body.style.display=o?"block":"none";h.textContent=(o?"▾":"▸")+" thinking";};d.appendChild(h);d.appendChild(body);return d;}
+function makeBlock(b, idx, agentId){
+  // add rewind button to block types that represent conversation turns
+  const addRw=(parent)=>{
+    if(idx==null || b.kind==="divider") return;
+    const rw=el("button","rewind-btn","↩"); rw.title="Rewind to here — discard everything after";
+    rw.onclick=function(e){e.stopPropagation();e.preventDefault();setRewind(agentId,idx);};
+    parent.appendChild(rw);
+  };
+  if(b.kind==="user"){const d=el("div","blk b-user");addRw(d);d.appendChild(el("div","who","user"));d.appendChild(el("div","body",b.text));return d;}
+  if(b.kind==="text"){const d=el("div","blk b-text");addRw(d);d.appendChild(el("div","who","deepseek"));const body=el("div","body");body.innerHTML=md2html(b.text);b._dom=body;d.appendChild(body);return d;}
+  if(b.kind==="reason"){const d=el("div","blk");addRw(d);const h=el("div","reason-h","▸ thinking");const body=el("div","reason",b.text);body.style.display="none";b._dom=body;h.onclick=()=>{const o=body.style.display==="none";body.style.display=o?"block":"none";h.textContent=(o?"▾":"▸")+" thinking";};d.appendChild(h);d.appendChild(body);return d;}
   if(b.kind==="toolcall"){const d=el("div","toolcall");d.appendChild(el("span","t","⚙ "+b.name));d.appendChild(el("div","args",typeof b.args==="string"?b.args:JSON.stringify(b.args,null,1)));return d;}
   if(b.kind==="toolres"){const d=el("div","toolres"+(b.ok?"":" err"));d.textContent="↳ "+(b.result||"");return d;}
   if(b.kind==="divider") return el("div","divider","— "+b.text+" —");
@@ -544,7 +583,32 @@ function makeBlock(b){
 }
 function updateBadge(id){ const b=$("#badge-"+id); if(!b) return; const m=agents.get(id).meta; b.className="badge "+m.status; b.textContent=m.status; document.querySelectorAll("#panel-"+id+" .sdot").forEach(x=>x.className="sdot s-"+m.status); }
 function updateComposer(id){ const ta=$("#ta-"+id); if(!ta) return; const st=agents.get(id).meta.status; ta.disabled=(st==="running"||st==="starting"); ta.placeholder=ta.disabled?"agent is working…":"Send a follow-up… (⌘/Ctrl+Enter)"; }
-async function sendFollow(id){ const ta=$("#ta-"+id); const t=ta.value.trim(); if(!t) return; ta.value=""; await api("POST",`/api/agents/${id}/send`,{text:t}); const a=agents.get(id); if(a){const fid=a.meta.folder_id; if(fid&&folders.has(fid)){folders.get(fid).last_interacted_at=Date.now()/1000;renderSide();}} }
+function setRewind(agentId, idx){
+  const a=agents.get(agentId); if(!a) return;
+  if(a.rewindIdx===idx){ a.rewindIdx=null; } // toggle off
+  else { a.rewindIdx=idx; }
+  renderPanelBody(agentId);
+}
+async function sendFollow(id){ const ta=$("#ta-"+id); const t=ta.value.trim(); if(!t) return;
+  const a=agents.get(id); if(!a) return;
+  // rewind check
+  if(a.rewindIdx!=null){
+    const discarded=a.blocks.length-a.rewindIdx-1;
+    if(!confirm(`Rewind and discard ${discarded} message${discarded!==1?'s':''}?\n\nThis cannot be undone. The conversation will be truncated at the rewind point and your new message will be sent.`)) return;
+  }
+  ta.value="";
+  const body={text:t};
+  if(a.rewindIdx!=null){
+    // find turn number at rewind point — count user+assistant messages up to rewindIdx
+    let turns=0;
+    for(let i=0;i<=a.rewindIdx;i++){ const k=a.blocks[i].kind; if(k==="user"||k==="text") turns++; }
+    body.rewind_to_msg=turns;
+    a.blocks=a.blocks.slice(0,a.rewindIdx+1);
+    a.rewindIdx=null;
+    renderPanelBody(id);
+  }
+  await api("POST",`/api/agents/${id}/send`,body);
+  if(a){const fid=a.meta.folder_id; if(fid&&folders.has(fid)){folders.get(fid).last_interacted_at=Date.now()/1000;renderSide();}} }
 
 // ---------- api ----------
 async function api(method,path,body){ const r=await fetch(path,{method,headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined}); return r.json().catch(()=>({})); }
