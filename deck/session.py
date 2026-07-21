@@ -333,6 +333,10 @@ class SessionManager:
     def folder_list(self) -> list[dict]:
         return self.folders.list()
 
+    def folder_get(self, fid: str) -> Optional[dict]:
+        f = self.folders.folders.get(fid)
+        return f.to_dict() if f else None
+
     def folder_create(self, name: str, workspace: Optional[str] = None,
                       isolation: str = "shared", source: str = "manual") -> dict:
         f = self.folders.create(name, workspace, isolation, source)

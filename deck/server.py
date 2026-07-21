@@ -102,6 +102,88 @@ def create_app() -> FastAPI:
         await manager.folder_stop(fid)
         return JSONResponse({"ok": True})
 
+    @app.get("/api/folders/{fid}/dag")
+    async def folder_dag(fid: str) -> JSONResponse:
+        """Parse the DAG board file in this folder's workspace and overlay agent statuses."""
+        import re
+        f = manager.folder_get(fid)
+        if not f or not f.get("workspace"):
+            return JSONResponse({"dag": None})
+        ws = Path(f["workspace"])
+        if not ws.is_dir():
+            return JSONResponse({"dag": None})
+        # find a DAG board file
+        board = None
+        for p in sorted(ws.glob("*_DAG.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+            board = p
+            break
+        if not board:
+            for p in sorted(ws.glob("SPRINT_*_DAG.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+                board = p
+                break
+        if not board:
+            return JSONResponse({"dag": None})
+        text = board.read_text(encoding="utf-8")
+        # parse node definitions — scan entire file for ### [x] / ### [ ] headers
+        node_entries = re.split(r'\n###\s+', text)
+        nodes = {}
+        for entry in node_entries:
+            m = re.match(r'\[([ x])\]\s+(\S+)', entry)
+            if not m:
+                continue
+            checked = m.group(1) == "x"
+            nid = m.group(2)
+            model = "supervisor"
+            mm2 = re.search(r'\*\*Model:\*\*\s*`?(\w+)`?', entry)
+            if mm2:
+                model = mm2.group(1)
+            deps = []
+            dm = re.search(r'\*\*Depends:\*\*\s*(.+)', entry)
+            if dm:
+                deps = [d.strip() for d in dm.group(1).split(",") if d.strip().lower() != "none"]
+            nodes[nid] = {"checked": checked, "model": model, "depends": deps}
+        # extract or auto-generate mermaid graph
+        mm = re.search(r'```mermaid\s*\n(.*?)```', text, re.DOTALL)
+        if mm:
+            mermaid = mm.group(1).strip()
+        elif nodes:
+            # auto-generate graph from node dependencies
+            lines = ["graph TD"]
+            for nid, nd in nodes.items():
+                for dep in nd["depends"]:
+                    if dep in nodes:
+                        lines.append(f"  {dep} --> {nid}")
+            if len(lines) == 1:
+                lines.append("  " + " --> ".join(nodes.keys()))
+            mermaid = "\n".join(lines)
+        else:
+            return JSONResponse({"dag": None})
+        # overlay agent statuses — match by agent name == node id
+        agent_statuses = {}
+        for a in manager.list():
+            if a.get("folder_id") == fid:
+                name = (a.get("name") or "").strip()
+                if name:
+                    agent_statuses[name] = a.get("status", "unknown")
+        # build combined status per node
+        for nid, nd in nodes.items():
+            if nd["checked"]:
+                nd["status"] = "done"
+            elif nid in agent_statuses:
+                st = agent_statuses[nid]
+                nd["status"] = st if st in ("running", "starting") else ("done" if st == "awaiting_input" else st)
+            elif nd["model"] == "deepseek":
+                nd["status"] = "pending"
+            else:
+                nd["status"] = "pending"  # supervisor nodes
+        return JSONResponse({
+            "dag": {
+                "file": str(board.name),
+                "mermaid": mermaid,
+                "nodes": nodes,
+            }
+        })
+
     @app.get("/api/agents/{sid}")
     async def get_agent(sid: str) -> JSONResponse:
         s = manager.get(sid)
