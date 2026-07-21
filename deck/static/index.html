@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DeepSeek Deck</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:false,theme:'base',fontSize:13,themeVariables:{primaryColor:'#212120',primaryBorderColor:'#34332f',primaryTextColor:'#e5e2da',lineColor:'#5c5a52',secondaryColor:'#262625',tertiaryColor:'#1a1a19'}});</script>
 <style>
   :root{
     --bg:#1a1a19; --panel:#212120; --panel2:#262625; --border:#34332f;
@@ -153,6 +155,12 @@
   .sb .clear{color:var(--faint);cursor:pointer;font-size:14px;padding:2px 4px;display:none}
   .sb .clear.show{display:inline}
   .sb .clear:hover{color:var(--text)}
+  /* DAG panel */
+  .dag-panel{min-height:200px;max-height:60vh}
+  .dag-panel .pbody{display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto}
+  .dag-panel .pbody svg{max-width:100%;height:auto}
+  .dag-panel .nodeLabel{font-family:var(--mono)!important;font-size:12px!important}
+  .dag-panel .edgeLabel{font-family:var(--mono)!important;font-size:10px!important}
 </style>
 </head>
 <body>
@@ -239,6 +247,8 @@ const agents = new Map();    // id -> {meta, blocks, cur, hydrated}
 const expanded = new Set();  // folder ids expanded in sidebar
 let openFolder = null;       // folder id whose panels are shown
 let focusAgent = null;       // agent id shown solo (within openFolder)
+let showDag = false;         // show DAG diagram panel
+let dagData = null;          // cached DAG data for current folder
 
 const $ = s => document.querySelector(s);
 const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e;};
@@ -283,7 +293,7 @@ async function handle(ev){
       if(!openFolder && a.meta.folder_id) selectFolder(a.meta.folder_id);
       else if(a.meta.folder_id===openFolder) renderMain();
       break;
-    case "status": a.meta.status=ev.status; renderSide(); updateBadge(id); updateComposer(id); break;
+    case "status": a.meta.status=ev.status; renderSide(); updateBadge(id); updateComposer(id); if(showDag) refreshDagIfVisible(); break;
     case "turn_start": a.cur={}; break;
     case "reasoning_delta": appendReason(a,ev.text); break;
     case "content_delta": appendText(a,ev.text); break;
@@ -414,7 +424,89 @@ function folderMenu(e,f){
 }
 document.addEventListener("click",()=>$("#ctx").classList.remove("on"));
 
-function selectFolder(fid){ openFolder=fid; focusAgent=null; expanded.add(fid); renderSide(); renderMain(); for(const a of agentsIn(fid)) hydrate(a.meta.id); }
+function selectFolder(fid){ openFolder=fid; focusAgent=null; showDag=false; dagData=null; expanded.add(fid); renderSide(); renderMain(); for(const a of agentsIn(fid)) hydrate(a.meta.id); fetchDag(fid); }
+
+// ---------- DAG ----------
+async function fetchDag(fid){
+  dagData=null;
+  try{const r=await fetch(`/api/folders/${fid}/dag`).then(r=>r.json());dagData=r.dag;}catch(e){dagData=null;}
+}
+async function renderDagDiagram(dag){
+  const body=$("#dag-body"); if(!body||!dag||!dag.mermaid) return;
+  // build styled mermaid: inject classDef + class assignments
+  const statusColors={
+    done:{fill:'#6f9c76',stroke:'#4a8a52',color:'#fff'},
+    running:{fill:'#e2b341',stroke:'#c49a20',color:'#231a14'},
+    starting:{fill:'#e2b341',stroke:'#c49a20',color:'#231a14'},
+    pending:{fill:'#3a3935',stroke:'#5c5a52',color:'#8a877d'},
+    error:{fill:'#e06c6c',stroke:'#c44a4a',color:'#fff'},
+    stopped:{fill:'#5c5a52',stroke:'#444340',color:'#8a877d'}
+  };
+  let defs='';
+  const used=new Set();
+  for(const [nid,nd] of Object.entries(dag.nodes||{})){
+    const st=nd.status||'pending';
+    if(!used.has(st)){used.add(st);const c=statusColors[st]||statusColors.pending;defs+=`classDef ${st} fill:${c.fill},stroke:${c.stroke},color:${c.color}\n`;}
+  }
+  let classes='';
+  for(const nid of Object.keys(dag.nodes||{})){
+    const st=dag.nodes[nid].status||'pending';
+    classes+=`class ${nid} ${st}\n`;
+  }
+  const styled=`graph TD\n${defs}${classes}${dag.mermaid.replace(/^graph\s+TD\s*\n?/i,'')}`;
+  try{
+    const {svg}=await mermaid.render('dag-svg',styled);
+    body.innerHTML=svg;
+    const svgEl=body.querySelector('svg');
+    if(svgEl){
+      svgEl.style.maxWidth='100%'; svgEl.style.height='auto';
+      // force font sizing on all text
+      svgEl.querySelectorAll('text').forEach(t=>{t.style.fontSize='12px';t.style.fontFamily='var(--mono),monospace';});
+      // make node rectangles more distinct by status
+      const statusColors = {
+        done: { fill: '#6f9c76', stroke: '#4a8a52', opacity: 1 },
+        running: { fill: '#e2b341', stroke: '#c49a20', opacity: 1 },
+        starting: { fill: '#e2b341', stroke: '#c49a20', opacity: 1 },
+        pending: { fill: '#3a3935', stroke: '#5c5a52', opacity: 0.7 },
+        error: { fill: '#e06c6c', stroke: '#c44a4a', opacity: 1 },
+        stopped: { fill: '#5c5a52', stroke: '#444340', opacity: 0.6 }
+      };
+      const nodes=svgEl.querySelectorAll('.node');
+      nodes.forEach(n=>{
+        const label=n.querySelector('.nodeLabel');
+        if(!label) return;
+        const nid=label.textContent.trim();
+        const nd=dag.nodes[nid];
+        if(!nd) return;
+        // apply status styling to node rect + label
+        const sc=statusColors[nd.status]||statusColors.pending;
+        const rect=n.querySelector('rect');
+        if(rect){rect.style.fill=sc.fill;rect.style.stroke=sc.stroke;rect.style.opacity=sc.opacity;}
+        const labels=n.querySelectorAll('text,span');
+        labels.forEach(l=>{
+          l.style.fill=nd.status==='pending'?'#8a877d':(nd.status==='running'||nd.status==='starting'?'#231a14':'#fff');
+        });
+        if(nd.model==='deepseek'){
+          n.style.cursor='pointer';
+          n.title='Click to focus agent '+nid;
+          n.onclick=()=>{
+            for(const a of agentsIn(openFolder)){
+              if(a.meta.name===nid||a.meta.id===nid){
+                focusAgent=a.meta.id;renderSide();renderMain();return;
+              }
+            }
+          };
+        }
+      });
+    }
+  }catch(e){body.innerHTML='<div style="color:var(--err);padding:12px">DAG render error: '+e.message+'</div>';}
+}
+
+async function refreshDagIfVisible(){
+  if(!openFolder||!showDag) return;
+  await fetchDag(openFolder);
+  if(dagData) renderDagDiagram(dagData);
+}
 
 // ---------- main ----------
 function renderMain(){
@@ -427,6 +519,41 @@ function renderMain(){
   const bar=el("div","fbar"); bar.id="fbar";
   renderFbarInto(bar,f);
   main.appendChild(bar);
+  // DAG panel
+  if(showDag){
+    const dagPanel=el("div","panel dag-panel"); dagPanel.id="dag-panel";
+    const dh=el("div","phead"); dh.appendChild(el("span","nm","DAG — "+((dagData||{}).file||"board"))); dh.appendChild(el("div","spacer"));
+    // progress summary
+    if(dagData&&dagData.nodes){
+      const counts={done:0,running:0,starting:0,pending:0,error:0};
+      for(const nd of Object.values(dagData.nodes)){const s=nd.status||'pending';counts[s]=(counts[s]||0)+1;}
+      const parts=[];
+      if(counts.done) parts.push(counts.done+' done');
+      if(counts.running+counts.starting) parts.push((counts.running+counts.starting)+' running');
+      if(counts.pending) parts.push(counts.pending+' pending');
+      if(counts.error) parts.push(counts.error+' error');
+      const summary=el("span","badge awaiting_input",parts.join(' · '));
+      summary.style.cssText='font-size:11px;margin-right:8px';
+      dh.appendChild(summary);
+    }
+    const closeDag=el("button","ghost mini","✕"); closeDag.onclick=()=>{showDag=false;renderMain();}; dh.appendChild(closeDag);
+    dagPanel.appendChild(dh);
+    const dbody=el("div","pbody"); dbody.id="dag-body";
+    if(dagData&&dagData.mermaid){
+      dbody.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:180px;color:var(--muted)">rendering…</div>';
+      dagPanel.appendChild(dbody);
+      main.appendChild(dagPanel);
+      renderDagDiagram(dagData);
+    }else if(dagData===null){
+      dbody.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:80px;color:var(--muted)">scanning for DAG board…</div>';
+      dagPanel.appendChild(dbody);
+      main.appendChild(dagPanel);
+    }else{
+      dbody.innerHTML='<div style="display:flex;align-items:center;justify-content:center;min-height:80px;color:var(--faint)">No DAG board found in this folder.<br><small>Create a SPRINT_*_DAG.md file with a mermaid diagram.</small></div>';
+      dagPanel.appendChild(dbody);
+      main.appendChild(dagPanel);
+    }
+  }
   const grid=el("div"); grid.id="grid"; grid.className=focusAgent?"focus":"";
   main.appendChild(grid);
   const ids = focusAgent ? [focusAgent] : agentsIn(openFolder).map(a=>a.meta.id);
@@ -445,6 +572,10 @@ function renderFbarInto(bar,f){
     ? "Each agent works in its own private git branch/copy of the project."
     : "All agents in this folder work directly in the same project directory.";
   bar.appendChild(isoTag);
+  const dagBtn=el("button","ghost mini"+(showDag?" primary":""),"DAG");
+  dagBtn.title="Show DAG board diagram if one exists in this folder";
+  dagBtn.onclick=()=>{showDag=!showDag;renderMain();};
+  bar.appendChild(dagBtn);
   const stopAll=el("button","ghost mini","Stop all");
   stopAll.title="Stop every running agent in this folder (conversations stay and can be resumed)";
   stopAll.onclick=()=>api("POST",`/api/folders/${f.id}/stop`);
