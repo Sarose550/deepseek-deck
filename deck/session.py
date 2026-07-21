@@ -194,6 +194,27 @@ class AgentSession:
         self._task = asyncio.create_task(self._run_cycle())
         return True
 
+    def rewind(self, to_msg: int) -> int:
+        """Truncate message history at the given user/assistant message boundary.
+        Returns number of messages removed."""
+        count = 0
+        idx = 0
+        for i, m in enumerate(self.messages):
+            if m.get("role") in ("user", "assistant"):
+                if count == to_msg:
+                    idx = i
+                    break
+                count += 1
+        else:
+            return 0  # to_msg beyond end — nothing to rewind
+        removed = len(self.messages) - idx
+        if removed <= 0:
+            return 0
+        self.messages = self.messages[:idx]
+        self._persist_messages()
+        self._emit("rewound", to_msg=to_msg, removed=removed)
+        return removed
+
     async def stop(self) -> None:
         if self._task and not self._task.done():
             self._task.cancel()

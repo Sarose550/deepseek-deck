@@ -234,6 +234,10 @@ def create_app() -> FastAPI:
         s = manager.get(sid)
         if not s:
             return JSONResponse({"error": "not found"}, status_code=404)
+        # handle rewind before send
+        rw = body.get("rewind_to_msg")
+        if rw is not None:
+            removed = s.rewind(int(rw))
         text = (body.get("text") or "").strip()
         if not text:
             return JSONResponse({"error": "text is required"}, status_code=400)
