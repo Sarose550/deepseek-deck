@@ -143,7 +143,7 @@ Workers are sandboxed to their `--workspace` (default: an isolated
 When you run a sprint with the `supervisor-dag` skill, the Deck automatically
 detects your `SPRINT_*_DAG.md` board file and renders its mermaid diagram
 live in the UI. Click the **DAG** button in the folder bar to see your whole
-sprint at a glance — nodes are color-coded by agent status (green = done,
+sprint at a glance, nodes are color-coded by agent status (green = done,
 yellow = running, gray = pending). Click any node to jump to that agent's panel.
 
 ![DAG board diagram with live status overlays](dag_screenshot.png)
