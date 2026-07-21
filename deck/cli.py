@@ -7,6 +7,7 @@ daemon is booted on demand the first time a command needs it.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import subprocess
@@ -14,6 +15,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import config as cfg
@@ -38,33 +40,75 @@ def _alive(port: int) -> bool:
         return False
 
 
+@contextmanager
+def _daemon_lock():
+    """Serialize the check-then-spawn sequence in ensure_daemon() across
+    concurrent `deck` invocations. Without this, two processes racing to
+    boot the daemon (e.g. two sessions calling `deck up`/`deck spawn` at
+    once, before either has recorded a live DAEMON_FILE) can each spawn
+    their own uvicorn subprocess targeting the same port -- the loser
+    fails to bind and, being detached (start_new_session=True), is never
+    reaped by anyone, leaking forever."""
+    cfg.init_dirs()
+    with open(cfg.LOCK_FILE, "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
 def ensure_daemon(port: int | None = None) -> str:
     """Return base_url of a live daemon, booting one if needed."""
     info = _read_daemon()
     if info and _alive(info.get("port", 0)):
         return f"http://127.0.0.1:{info['port']}"
 
-    port = port or cfg.DEFAULT_PORT
-    cfg.init_dirs()
-    logf = open(cfg.LOG_FILE, "a")
-    pkg_parent = str(Path(__file__).resolve().parent.parent)
-    env = dict(os.environ, DECK_PORT=str(port))
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "deck.server:create_app",
-         "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        cwd=pkg_parent, stdout=logf, stderr=logf,
-        start_new_session=True, env=env,
-    )
-    cfg.DAEMON_FILE.write_text(
-        json.dumps({"pid": proc.pid, "port": port, "started_at": time.time()}),
-        encoding="utf-8")
-    for _ in range(60):  # up to ~15s
-        if _alive(port):
-            print(f"deck daemon up on http://127.0.0.1:{port} (pid {proc.pid})",
-                  file=sys.stderr)
-            return f"http://127.0.0.1:{port}"
-        time.sleep(0.25)
-    raise SystemExit(f"daemon failed to start; see {cfg.LOG_FILE}")
+    with _daemon_lock():
+        # Re-check: another process may have already booted the daemon
+        # while we were waiting for the lock.
+        info = _read_daemon()
+        if info and _alive(info.get("port", 0)):
+            return f"http://127.0.0.1:{info['port']}"
+
+        port = port or cfg.DEFAULT_PORT
+        cfg.init_dirs()
+        logf = open(cfg.LOG_FILE, "a")
+        pkg_parent = str(Path(__file__).resolve().parent.parent)
+        env = dict(os.environ, DECK_PORT=str(port))
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "deck.server:create_app",
+             "--factory", "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
+            cwd=pkg_parent, stdout=logf, stderr=logf,
+            start_new_session=True, env=env,
+        )
+        cfg.DAEMON_FILE.write_text(
+            json.dumps({"pid": proc.pid, "port": port, "started_at": time.time()}),
+            encoding="utf-8")
+        for _ in range(60):  # up to ~15s
+            if _alive(port):
+                print(f"deck daemon up on http://127.0.0.1:{port} (pid {proc.pid})",
+                      file=sys.stderr)
+                return f"http://127.0.0.1:{port}"
+            if proc.poll() is not None:
+                break  # process already exited (e.g. port bind failure) -- stop polling
+            time.sleep(0.25)
+
+        # Startup failed or timed out -- the subprocess is detached
+        # (start_new_session=True) and won't be reaped by the OS just
+        # because we exit, so clean it up explicitly before giving up.
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+        try:
+            cfg.DAEMON_FILE.unlink()
+        except OSError:
+            pass
+        raise SystemExit(f"daemon failed to start; see {cfg.LOG_FILE}")
 
 
 def stop_daemon() -> None:

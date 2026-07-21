@@ -18,6 +18,7 @@ from pathlib import Path
 DECK_HOME = Path(os.getenv("DECK_HOME", str(Path.home() / ".deepseek-deck")))
 SESSIONS_DIR = DECK_HOME / "sessions"
 DAEMON_FILE = DECK_HOME / "daemon.json"     # {pid, port, started_at}
+LOCK_FILE = DECK_HOME / "daemon.lock"       # serializes ensure_daemon() across processes
 LOG_FILE = DECK_HOME / "daemon.log"
 
 DEEPSEEK_MCP_CONFIG = Path.home() / ".deepseek-mcp" / "config.json"
